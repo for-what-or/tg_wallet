@@ -3,7 +3,7 @@ from aiogram.filters import BaseFilter, Command
 from aiogram.types import Message
 from aiogram import Router
 
-from config import ADMINS_LIST
+from src.config import ADMINS_LIST
 
 admin_router = Router()
 
