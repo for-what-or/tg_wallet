@@ -1,4 +1,4 @@
-from src.routers import routers
+from src.handlers import routers
 from src.config import bot, dp
 from aiogram.methods import DeleteWebhook
 

@@ -1,33 +1,57 @@
 from aiogram.fsm.state import State, StatesGroup
 
-# Состояния для процесса регистрации
 class RegistrationStates(StatesGroup):
     """
-    Состояния, связанные с процессом регистрации пользователя.
+    FSM-состояния для процесса регистрации.
     """
     waiting_for_name = State()
 
-
-# Состояния для добавления/изменения TON-кошелька
 class WalletStates(StatesGroup):
     """
-    Состояния для добавления/изменения TON-кошелька.
+    FSM-состояния для добавления TON-кошелька.
     """
     waiting_for_wallet = State()
 
-
-# Состояния для добавления/изменения банковской карты
 class CardStates(StatesGroup):
     """
-    Состояния для добавления/изменения банковской карты.
+    FSM-состояния для добавления банковской карты.
     """
     waiting_for_card = State()
 
-
-# Состояния для смены языка
 class LanguageStates(StatesGroup):
     """
-    Состояния для выбора нового языка.
+    FSM-состояния для выбора языка.
     """
     choosing_language = State()
 
+class P2PStates(StatesGroup):
+    """
+    FSM-состояния для процесса P2P-сделки (со стороны пользователя).
+    """
+    waiting_for_recipient_type = State()
+    waiting_for_recipient_wallet = State()
+    waiting_for_recipient_card = State()
+    waiting_for_amount = State()
+    waiting_for_confirmation = State()
+
+# --- ДОБАВЛЕНО ---
+class AdminP2PStates(StatesGroup):
+    """
+    FSM-состояния для админ-панели управления P2P.
+    """
+    choosing_action = State() # Выбор действия (пары/листинги)
+    
+    # Состояния для пар
+    waiting_for_pair_to_add = State()
+    waiting_for_pair_to_remove = State()
+    
+    # Состояния для листингов
+    choosing_pair_for_listing = State() # Выбор пары для управления листингами
+    choosing_listing_action = State() # Добавить/удалить листинг
+    waiting_for_listing_to_remove = State()
+    
+    # Цепочка добавления листинга
+    waiting_for_listing_nickname = State()
+    waiting_for_listing_price = State()
+    waiting_for_listing_limit = State()
+    waiting_for_listing_action = State()

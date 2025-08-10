@@ -14,14 +14,15 @@
     "wallet_validation_error": "Invalid address format. Please send a correct TON wallet address.",
     "card_validation_error": "Invalid card number format. Please enter 16 digits.",
     "select_add_type": "💼 Select what you want to add:",
-    "choose_language": "🌍 Choose your language:\nВыберите язык:"
+    "choose_language": "🌍 Choose your language:\nВыберите язык:",
+    "id_text_with_copy": "Your ID:\n<code>{user_id}</code>\n\nClick on the ID to copy it"
   },
   "buttons": {
-    "button_profile": "👤 My Profile",
-    "button_add_wallet": "💼 Add/Change Wallet",
-    "button_create_deal": "Create Deal",
-    "button_ref_link": "Referral Link",
-    "button_change_language": "🌍 Change language",
+    "profile": "👤 My Profile",
+    "add_wallet": "💼 Add/Change Wallet",
+    "create_deal": "Create Deal",
+    "ref_link": "Referral Link",
+    "change_language": "🌍 Change language",
     "transfer": "Transfer",
     "withdraw": "Withdraw",
     "back": "⬅️ Back",
