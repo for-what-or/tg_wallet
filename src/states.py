@@ -55,3 +55,10 @@ class AdminP2PStates(StatesGroup):
     waiting_for_listing_price = State()
     waiting_for_listing_limit = State()
     waiting_for_listing_action = State()
+
+# --- ДОБАВЛЕНО ---
+class TopUpStates(StatesGroup):
+    """
+    FSM-состояния для процесса пополнения кошелька.
+    """
+    waiting_for_confirmation = State()
