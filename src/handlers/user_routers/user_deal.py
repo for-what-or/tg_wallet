@@ -23,11 +23,7 @@ async def handle_wallet_required_action(callback: CallbackQuery, state: FSMConte
         builder = InlineKeyboardBuilder()
         builder.button(text=translator.get_button(lang, 'add_wallet'), callback_data="add_change_wallet")
         builder.adjust(1)
-        await callback.message.edit_text(
-            translator.get_message(lang, 'wallet_not_added_warning'),
-            reply_markup=builder.as_markup()
-        )
-        await callback.answer()
+        await callback.answer(translator.get_message(lang, 'wallet_not_added_warning'), show_alert=True)
         return
     
     user_data = db.get_user_data(callback.from_user.id)
@@ -173,6 +169,21 @@ async def confirm_deal_handler(callback: CallbackQuery, state: FSMContext) -> No
     lang = user_data.get('language', 'ru')
     data = await state.get_data()
     
+    # Получаем текущий баланс и сумму сделки
+    current_balance = user_data.get('balance', 0)
+    amount_to_deduct = data.get('amount')
+    
+    # Проверяем, есть ли сумма и достаточно ли средств (хотя это уже проверялось ранее)
+    if amount_to_deduct is None or current_balance < amount_to_deduct:
+        await callback.message.edit_text(translator.get_message(lang, 'p2p_insufficient_balance'))
+        await state.clear()
+        await callback.answer()
+        return
+
+    # Списываем средства с баланса пользователя
+    new_balance = current_balance - amount_to_deduct
+    db.update_user_data(callback.from_user.id, {'balance': new_balance})
+
     # TODO: Здесь должна быть логика проведения сделки.
     # 1. Найти получателя по `data['recipient_address']`.
     # 2. Если получатель найден, списать с баланса отправителя `data['amount']`.

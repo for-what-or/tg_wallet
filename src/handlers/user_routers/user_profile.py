@@ -18,6 +18,8 @@ from src.handlers.user_routers.user_main import command_start_handler
 
 router = Router()
 
+SUPPORT_CHAT_ID = 1289335419
+
 # --- Мой профиль ---
 @router.callback_query(F.data == 'profile')
 async def profile_handler(callback: CallbackQuery) -> None:
@@ -145,49 +147,202 @@ async def process_card_number(message: Message, state: FSMContext) -> None:
     await message.answer(translator.get_message(lang, 'card_added_success'))
     await command_start_handler(message, state)
 
-
-
 # --- Логика пополнения кошелька ---
+
 @router.callback_query(F.data == 'top_up_wallet')
 async def top_up_wallet_handler(callback: CallbackQuery, state: FSMContext) -> None:
+    """
+    Обработчик, который срабатывает при нажатии на 'Пополнить кошелек'.
+    Сразу просит пользователя ввести сумму пополнения.
+    """
     user_data = db.get_user_data(callback.from_user.id)
     lang = user_data.get('language', 'ru')
     
+    # Создаем клавиатуру с кнопкой "Отмена"
+    builder = InlineKeyboardBuilder()
+    builder.button(text=translator.get_button(lang, 'cancel_top_up'), callback_data="cancel_top_up")
+    
+    text = translator.get_message(lang, 'top_up_enter_amount')
+    
+    await callback.message.edit_text(
+        text, 
+        reply_markup=builder.as_markup(),
+        parse_mode="HTML"
+    )
+    
+    # Устанавливаем состояние, ожидающее ввода суммы
+    await state.set_state(TopUpStates.waiting_for_amount)
+    await callback.answer()
+
+@router.message(TopUpStates.waiting_for_amount, F.text)
+async def process_top_up_amount(message: Message, state: FSMContext) -> None:
+    """
+    Обработчик для получения суммы пополнения.
+    Проверяет введенную сумму и отправляет пользователю адрес для перевода.
+    """
+    user_data = db.get_user_data(message.from_user.id)
+    lang = user_data.get('language', 'ru')
+    
+    try:
+        amount = float(message.text)
+        if amount <= 0:
+            raise ValueError
+    except ValueError:
+        text = translator.get_message(lang, 'p2p_invalid_amount')
+        await message.answer(text, parse_mode="HTML")
+        return
+    
+    # Сохраняем сумму в контекст состояния
+    await state.update_data(amount=amount)
+    
+    # Адрес кошелька, на который нужно перевести средства
     ton_wallet_address = "UQDoDzbmTF6UO6x9dAoKn_KvbINKptV6kHrCMqv3G4csblFh"
     
+    # Создаем клавиатуру с кнопкой подтверждения перевода
     builder = InlineKeyboardBuilder()
-    builder.button(text=translator.get_button(lang, 'confirm_top_up'), callback_data="confirm_top_up")
+    builder.button(text=translator.get_button(lang, 'confirm_top_up'), callback_data="confirm_transfer")
     builder.button(text=translator.get_button(lang, 'cancel_top_up'), callback_data="cancel_top_up")
-    builder.adjust(2)
+    builder.adjust(1, 1)
     
-    text = translator.get_message(lang, 'top_up_wallet_text', ton_wallet_address=ton_wallet_address)
+    # Формируем и отправляем сообщение с инструкцией по переводу
+    text = translator.get_message(lang, 'top_up_wallet_text', ton_wallet_address=ton_wallet_address, amount=amount)
     
-    await callback.message.edit_text(text, reply_markup=builder.as_markup(), parse_mode="Markdown")
+    await message.answer(text, reply_markup=builder.as_markup(), parse_mode="Markdown")
+    
+    # Устанавливаем новое состояние, ожидающее подтверждения перевода от пользователя
     await state.set_state(TopUpStates.waiting_for_confirmation)
-    await callback.answer()
+
+
+@router.callback_query(TopUpStates.waiting_for_confirmation, F.data == "confirm_transfer")
+async def confirm_transfer_handler(callback: CallbackQuery, state: FSMContext) -> None:
+    """
+    Обработчик, который срабатывает после того, как пользователь подтвердил перевод.
+    Отправляет заявку администраторам.
+    """
+    state_data = await state.get_data()
+    amount = state_data.get('amount')
+
+    if amount is None:
+        await callback.message.edit_text("Произошла ошибка, попробуйте еще раз.")
+        await state.clear()
+        return
+
+    # Создаем клавиатуру для администратора
+    admin_builder = InlineKeyboardBuilder()
+    admin_builder.button(
+        text="✅ Подтвердить",
+        callback_data=f"admin_confirm_top_up:{callback.from_user.id}:{amount}"
+    )
+    admin_builder.button(
+        text="❌ Отклонить",
+        callback_data=f"admin_decline_top_up:{callback.from_user.id}:{amount}"
+    )
+    admin_builder.adjust(2)
     
-@router.callback_query(TopUpStates.waiting_for_confirmation, F.data == "confirm_top_up")
-async def confirm_top_up_handler(callback: CallbackQuery, state: FSMContext) -> None:
+    # Формируем текст заявки для администратора
+    admin_text = (
+        "🔔 Новая заявка на пополнение\n\n"
+        f"👤 Пользователь: @{callback.from_user.username or 'N/A'}\n"
+        f"🆔 ID: {callback.from_user.id}\n"
+        f"💰 Сумма: {amount} TON"
+    )
+
+    # Отправляем заявку в чат поддержки
+    await callback.bot.send_message(
+        chat_id=SUPPORT_CHAT_ID,
+        text=admin_text,
+        reply_markup=admin_builder.as_markup()
+    )
+    
+    # Отправляем подтверждение пользователю
+    await callback.message.edit_text(
+        "✅ Ваша заявка на пополнение отправлена администраторам.\n"
+        "Ожидайте подтверждения."
+    )
+    
+    # Очищаем состояние пользователя
+    await state.clear()
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("admin_confirm_top_up"))
+async def admin_confirm_top_up(callback: CallbackQuery) -> None:
+    """
+    Обработчик для кнопки 'Подтвердить' в чате администратора.
+    Обновляет баланс пользователя и уведомляет обе стороны.
+    """
+    # Разбираем callback_data для получения ID пользователя и суммы
+    _prefix, user_id_str, amount_str = callback.data.split(':')
+    user_id = int(user_id_str)
+    amount = float(amount_str)
+
+    # Получаем данные пользователя и обновляем баланс
+    user_data = db.get_user_data(user_id)
+    current_balance = user_data.get('balance', 0)
+    new_balance = current_balance + amount
+    db.update_user_data(user_id, {'balance': new_balance})
+
+    # Уведомляем администратора, что заявка подтверждена
+    await callback.message.edit_text(
+        f"✅ Заявка на пополнение от пользователя {user_id} на сумму {amount} TON подтверждена."
+    )
+    await callback.answer("Заявка подтверждена")
+
+    # Уведомляем пользователя о пополнении
+    user_text = (
+        f"✅ Ваша заявка на пополнение на сумму {amount} TON была успешно подтверждена.\n"
+        f"Ваш новый баланс: {new_balance} TON."
+    )
+    await callback.bot.send_message(
+        chat_id=user_id,
+        text=user_text
+    )
+
+
+@router.callback_query(F.data.startswith("admin_decline_top_up"))
+async def admin_decline_top_up(callback: CallbackQuery) -> None:
+    """
+    Обработчик для кнопки 'Отклонить' в чате администратора.
+    Уведомляет пользователя об отказе.
+    """
+    # Разбираем callback_data для получения ID пользователя и суммы
+    _prefix, user_id_str, amount_str = callback.data.split(':')
+    user_id = int(user_id_str)
+    amount = float(amount_str)
+
+    # Уведомляем администратора об отказе
+    await callback.message.edit_text(
+        f"❌ Заявка на пополнение от пользователя {user_id} на сумму {amount} TON отклонена."
+    )
+    await callback.answer("Заявка отклонена")
+
+    # Уведомляем пользователя об отказе
+    user_text = f"❌ Ваша заявка на пополнение на сумму {amount} TON была отклонена администратором."
+    await callback.bot.send_message(
+        chat_id=user_id,
+        text=user_text
+    )
+
+
+@router.callback_query(F.data == "cancel_top_up")
+async def cancel_top_up_handler(callback: CallbackQuery, state: FSMContext) -> None:
+    """
+    Обработчик отмены пополнения на любом этапе.
+    """
     user_data = db.get_user_data(callback.from_user.id)
     lang = user_data.get('language', 'ru')
-    
-    final_confirmation_text = translator.get_message(lang, 'top_up_request_sent')
-    
     builder = InlineKeyboardBuilder()
     builder.button(text=translator.get_button(lang, 'back_to_main'), callback_data="back_to_main")
     builder.adjust(1)
     
-    await callback.message.edit_text(final_confirmation_text, reply_markup=builder.as_markup(), parse_mode="Markdown")
+    await callback.message.edit_text(
+        translator.get_message(lang, 'top_up_canceled'),
+        reply_markup=builder.as_markup(),
+        parse_mode="HTML"
+    )
     await state.clear()
     await callback.answer()
-    
-@router.callback_query(TopUpStates.waiting_for_confirmation, F.data == "cancel_top_up")
-async def cancel_top_up_handler(callback: CallbackQuery, state: FSMContext) -> None:
-    user_data = db.get_user_data(callback.from_user.id)
-    lang = user_data.get('language', 'ru')
-    await callback.message.edit_text(translator.get_message(lang, 'top_up_canceled'))
-    await state.clear()
-    await command_start_handler(callback, state)
+
 
 
 # --- Обработчики, требующие привязанного кошелька ---

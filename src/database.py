@@ -124,8 +124,7 @@ class UserDatabase:
             rows = cursor.fetchall()
             return [dict(row) for row in rows]
             
-    # ... (остальные ваши методы: register_new_user, get_user_data и т.д. остаются без изменений)
-    # ...
+    # --- Методы для пользователей ---
     def register_new_user(self, user_id: int, username: str, full_name: str, language: str = 'ru'):
         """Регистрирует нового пользователя, если он не существует."""
         with sqlite3.connect(self.db_path) as conn:
@@ -144,13 +143,27 @@ class UserDatabase:
             cursor.execute("SELECT * FROM users WHERE user_id = ?", (user_id,))
             row = cursor.fetchone()
             return dict(row) if row else None
+            
+    def update_user_data(self, user_id: int, data: Dict):
+        """Обновляет данные пользователя на основе переданного словаря."""
+        if not data:
+            return
+        
+        set_clause = ", ".join([f"{key} = ?" for key in data.keys()])
+        values = list(data.values())
+        values.append(user_id)
+        
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute(f"UPDATE users SET {set_clause} WHERE user_id = ?", tuple(values))
+            conn.commit()
 
     def update_ton_wallet(self, user_id: int, wallet_address: str):
         """Обновляет адрес TON-кошелька пользователя."""
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
             cursor.execute("UPDATE users SET ton_wallet = ? WHERE user_id = ?",
-                           (wallet_address, user_id))
+                            (wallet_address, user_id))
             conn.commit()
 
     def update_card_number(self, user_id: int, card_number: str):
@@ -158,7 +171,7 @@ class UserDatabase:
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
             cursor.execute("UPDATE users SET card_number = ? WHERE user_id = ?",
-                           (card_number, user_id))
+                            (card_number, user_id))
             conn.commit()
 
     def update_language(self, user_id: int, language: str):
@@ -166,7 +179,7 @@ class UserDatabase:
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
             cursor.execute("UPDATE users SET language = ? WHERE user_id = ?",
-                           (language, user_id))
+                            (language, user_id))
             conn.commit()
 
     def get_user_language(self, user_id: int) -> str:

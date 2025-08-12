@@ -14,6 +14,8 @@ def get_main_menu_keyboard(lang: str) -> InlineKeyboardMarkup:
     #builder_start.button(text=translator.get_button(lang, 'ref_link'), callback_data="ref_link")
     # Новая кнопка для P2P-обмена
     builder_start.button(text=translator.get_button(lang, 'p2p'), callback_data="p2p")
+    builder_start.button(text=translator.get_button(lang, 'support'), callback_data="support")
+    builder_start.button(text=translator.get_button(lang, 'about_us'), callback_data="about_us")
     builder_start.button(text=translator.get_button(lang, 'change_language'), callback_data="change_language")
     builder_start.adjust(1)
     return builder_start.as_markup()

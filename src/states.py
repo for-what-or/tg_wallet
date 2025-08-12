@@ -62,3 +62,4 @@ class TopUpStates(StatesGroup):
     FSM-состояния для процесса пополнения кошелька.
     """
     waiting_for_confirmation = State()
+    waiting_for_amount = State()
