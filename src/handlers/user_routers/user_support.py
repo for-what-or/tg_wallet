@@ -35,10 +35,7 @@ async def support_handler(callback: CallbackQuery, state: FSMContext) -> None:
 
     # Создаем клавиатуру с кнопкой "Назад".
     builder = InlineKeyboardBuilder()
-    builder.add(types.InlineKeyboardButton(
-        text="⬅️ Назад",
-        callback_data="about_us"
-    ))
+    builder.button(text=translator.get_button(lang, 'back'), callback_data="back_to_main")
     builder.adjust(1)
     
     # Отправляем сообщение с инструкциями
