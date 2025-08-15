@@ -1,28 +1,23 @@
 import re
 from aiogram import F, Router, html
-from aiogram.filters import Command, CommandStart
-from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import Message, CallbackQuery
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.fsm.context import FSMContext
-from aiogram import types
 
 from src.locales import translator
 from src.database import db
 from src.states import *
-# Импортируем клавиатуры из нового файла
-from src.utils.keyboards import get_main_menu_keyboard, get_register_keyboard
-# Импортируем хелперы из нового файла
 from src.utils.formatters import format_ton_wallet, format_card_number
-
 from src.handlers.user_routers.user_main import command_start_handler
 
-router = Router()
+from src.config import ADMIN_GROUPS
 
-SUPPORT_CHAT_ID = 1289335419
+router = Router()
 
 # --- Мой профиль ---
 @router.callback_query(F.data == 'profile')
 async def profile_handler(callback: CallbackQuery) -> None:
+    
     user_data = db.get_user_data(callback.from_user.id)
 
     lang = user_data.get('language', 'ru')
@@ -148,7 +143,6 @@ async def process_card_number(message: Message, state: FSMContext) -> None:
     await command_start_handler(message, state)
 
 # --- Логика пополнения кошелька ---
-
 @router.callback_query(F.data == 'top_up_wallet')
 async def top_up_wallet_handler(callback: CallbackQuery, state: FSMContext) -> None:
     """
@@ -157,6 +151,13 @@ async def top_up_wallet_handler(callback: CallbackQuery, state: FSMContext) -> N
     """
     user_data = db.get_user_data(callback.from_user.id)
     lang = user_data.get('language', 'ru')
+
+    if not user_data.get('ton_wallet'):
+        builder = InlineKeyboardBuilder()
+        builder.button(text=translator.get_button(lang, 'add_wallet'), callback_data="add_change_wallet")
+        builder.adjust(1)
+        await callback.answer(translator.get_message(lang, 'wallet_not_added_warning'), show_alert=True)
+        return
     
     # Создаем клавиатуру с кнопкой "Отмена"
     builder = InlineKeyboardBuilder()
@@ -167,7 +168,7 @@ async def top_up_wallet_handler(callback: CallbackQuery, state: FSMContext) -> N
     await callback.message.edit_text(
         text, 
         reply_markup=builder.as_markup(),
-        parse_mode="HTML"
+        parse_mode="Markdown"
     )
     
     # Устанавливаем состояние, ожидающее ввода суммы
@@ -248,11 +249,12 @@ async def confirm_transfer_handler(callback: CallbackQuery, state: FSMContext) -
     )
 
     # Отправляем заявку в чат поддержки
-    await callback.bot.send_message(
-        chat_id=SUPPORT_CHAT_ID,
-        text=admin_text,
-        reply_markup=admin_builder.as_markup()
-    )
+    for group in ADMIN_GROUPS:
+        await callback.bot.send_message(
+            chat_id=group,
+            text=admin_text,
+            reply_markup=admin_builder.as_markup()
+        )
     
     # Отправляем подтверждение пользователю
     await callback.message.edit_text(

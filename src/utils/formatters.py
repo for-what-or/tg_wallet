@@ -4,7 +4,8 @@ def format_ton_wallet(wallet_address: str, placeholder: str) -> str:
     Форматирует адрес TON-кошелька для скрытия его части.
     Например: EQAWzE...C6ISgcLo
     """
-    if wallet_address == placeholder:
+    # Добавлена проверка на None и пустую строку
+    if not wallet_address or wallet_address == 'NULL':
         return placeholder
     
     # Показываем первые 8 и последние 8 символов
@@ -17,7 +18,8 @@ def format_card_number(card_number: str, placeholder: str) -> str:
     Форматирует номер карты для скрытия его части.
     Например: **** **** **** 1234
     """
-    if card_number == placeholder:
+    # Добавлена проверка на None и пустую строку
+    if not card_number or card_number == 'NULL':
         return placeholder
 
     # Показываем только последние 4 цифры

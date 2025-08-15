@@ -1,7 +1,6 @@
-# database.py
-
 from typing import Dict, Optional, List
 import sqlite3
+import time
 from pathlib import Path
 
 class UserDatabase:
@@ -12,6 +11,7 @@ class UserDatabase:
         self.db_path = db_path
         self._init_db()
         self._init_p2p_tables() # Инициализируем таблицы для P2P
+        self._init_permissions_table() # Инициализируем новую таблицу для разрешений
 
     def _init_db(self):
         """Создает таблицу users, если она не существует."""
@@ -23,7 +23,6 @@ class UserDatabase:
                     username TEXT,
                     full_name TEXT,
                     ton_wallet TEXT,
-                    ton_wallet_test TEXT,
                     card_number TEXT,
                     language TEXT DEFAULT 'ru',
                     balance REAL DEFAULT 0,
@@ -54,6 +53,19 @@ class UserDatabase:
                     "limit" TEXT NOT NULL,
                     action TEXT NOT NULL,
                     FOREIGN KEY (pair_id) REFERENCES p2p_pairs (id) ON DELETE CASCADE
+                )
+            """)
+            conn.commit()
+            
+    def _init_permissions_table(self):
+        """Создает таблицу для разрешений на пополнение баланса."""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS balance_permissions (
+                    user_id INTEGER PRIMARY KEY,
+                    end_time REAL NOT NULL,
+                    FOREIGN KEY (user_id) REFERENCES users (user_id) ON DELETE CASCADE
                 )
             """)
             conn.commit()
@@ -210,6 +222,67 @@ class UserDatabase:
             """, (listing_id,))
             row = cursor.fetchone()
             return dict(row) if row else None
+
+    # --- Методы для разрешений на пополнение баланса ---
+    def grant_balance_permission(self, user_id: int, duration_days: int):
+        """
+        Выдает пользователю разрешение на пополнение баланса на определенное количество дней.
+        """
+        end_time = time.time() + (duration_days * 24 * 3600)
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT OR REPLACE INTO balance_permissions (user_id, end_time)
+                VALUES (?, ?)
+            """, (user_id, end_time))
+            conn.commit()
+
+    def revoke_balance_permission(self, user_id: int):
+        """
+        Забирает у пользователя разрешение на пополнение баланса.
+        """
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM balance_permissions WHERE user_id = ?", (user_id,))
+            conn.commit()
+
+
+    def check_balance_permission(self, user_id: int) -> bool:
+        """
+        Проверяет, есть ли у пользователя активное разрешение на пополнение.
+        Если время истекло, разрешение удаляется.
+        """
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT end_time FROM balance_permissions WHERE user_id = ?", (user_id,))
+            result = cursor.fetchone()
+            
+            if not result:
+                return False
+            
+            end_time = result[0]
+            if time.time() < end_time:
+                return True
+            else:
+                # Если время истекло, удаляем разрешение
+                cursor.execute("DELETE FROM balance_permissions WHERE user_id = ?", (user_id,))
+                conn.commit()
+                return False
+
+    def get_user_balance(self, user_id: int) -> float:
+        """Возвращает текущий баланс пользователя."""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT balance FROM users WHERE user_id = ?", (user_id,))
+            result = cursor.fetchone()
+            return result[0] if result else 0.0
+
+    def update_user_balance(self, user_id: int, amount: float):
+        """Обновляет баланс пользователя, добавляя или вычитая сумму."""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?", (amount, user_id))
+            conn.commit()
 
 # Инициализация базы данных
 db = UserDatabase()

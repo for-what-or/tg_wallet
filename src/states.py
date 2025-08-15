@@ -34,7 +34,6 @@ class P2PStates(StatesGroup):
     waiting_for_amount = State()
     waiting_for_confirmation = State()
 
-# --- ДОБАВЛЕНО ---
 class AdminP2PStates(StatesGroup):
     """
     FSM-состояния для админ-панели управления P2P.
@@ -56,10 +55,18 @@ class AdminP2PStates(StatesGroup):
     waiting_for_listing_limit = State()
     waiting_for_listing_action = State()
 
-# --- ДОБАВЛЕНО ---
 class TopUpStates(StatesGroup):
     """
     FSM-состояния для процесса пополнения кошелька.
     """
     waiting_for_confirmation = State()
     waiting_for_amount = State()
+
+# --- НОВЫЙ КЛАСС ДЛЯ УПРАВЛЕНИЯ ПОЛЬЗОВАТЕЛЯМИ ---
+class AdminUserManagement(StatesGroup):
+    """
+    FSM-состояния для админ-панели управления пользователями.
+    """
+    waiting_for_user_id = State()      # Ожидание ввода ID пользователя
+    viewing_user_profile = State()     # Просмотр профиля конкретного пользователя
+    editing_field = State()            # Ожидание нового значения для поля
