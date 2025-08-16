@@ -1,6 +1,6 @@
 import asyncio
-from aiogram import F, Router, html
-from aiogram.types import CallbackQuery, FSInputFile, InputMediaPhoto # Добавили FSInputFile и InputMediaPhoto
+from aiogram import F, Router
+from aiogram.types import CallbackQuery, FSInputFile, InputMediaPhoto
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.fsm.context import FSMContext
 
@@ -62,7 +62,6 @@ async def language_handler(callback: CallbackQuery, state: FSMContext) -> None:
     
     await state.set_state(LanguageStates.choosing_language)
     await callback.answer()
-
 
 @router.callback_query(LanguageStates.choosing_language, F.data.startswith('set_lang:'))
 async def set_language_handler(callback: CallbackQuery, state: FSMContext) -> None:

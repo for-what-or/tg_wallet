@@ -1,16 +1,12 @@
-import re
-import html
-from aiogram import F, Router, types
-from aiogram.filters import Command, CommandStart
-from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, FSInputFile, InputMediaPhoto
+from aiogram import F, Router
+from aiogram.types import Message, CallbackQuery, FSInputFile, InputMediaPhoto
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.fsm.context import FSMContext
-from aiogram.fsm.state import State, StatesGroup
 
 # Предполагается, что эти модули доступны
 from src.database import db
 from src.locales import translator
-from src.config import * # Импортируем все переменные из config
+from src.config import *
 from src.states import *
 
 router = Router()
@@ -31,20 +27,17 @@ async def support_handler(callback: CallbackQuery, state: FSMContext) -> None:
     # Устанавливаем состояние FSM для ожидания сообщения от пользователя
     await state.set_state(SupportState.waiting_for_message)
 
-    # Создаем клавиатуру с кнопкой "Назад".
+    # Создаем клавиатуру с кнопкой "Назад" с локализованным текстом
     builder = InlineKeyboardBuilder()
     builder.button(text=translator.get_button(lang, 'back'), callback_data="back_to_main")
     builder.adjust(1)
     
-    # Отправляем сообщение с инструкциями
-    text = (
-        "🛠 Поддержка\n"
-        "Нужна помощь или возник вопрос? Мы на связи 24/7.\n\n"
-        "Пожалуйста, укажите:\n"
-        "🔹Ваш ID (или номер телефона / username)\n"
-        "🔹Суть проблемы\n"
-        "🔹Скриншоты, если есть\n\n"
-        "Опишите вашу проблему максимально подробно."
+    # Отправляем сообщение с инструкциями, используя локализацию
+    text = translator.get_message(
+        lang,
+        "support_instructions",
+        user_id=callback.from_user.id,
+        username=callback.from_user.username
     )
     
     # Используем FSInputFile и InputMediaPhoto для отправки фото
@@ -61,11 +54,9 @@ async def process_support_message(message: Message, state: FSMContext) -> None:
     Обработчик, который принимает сообщение от пользователя и отправляет его в чат поддержки.
     Добавлена кнопка "Ответить" для администраторов.
     """
-    # Отправляем подтверждение пользователю
-    await message.answer(
-        "✅ Ваша заявка отправлена в службу поддержки.\n"
-        "Оператор свяжется с вами в течение 1–12 часов."
-    )
+    # Отправляем подтверждение пользователю с локализованным текстом
+    lang = translator.get_user_lang(message.from_user.id)
+    await message.answer(translator.get_message(lang, "support_request_sent_user"))
     
     # Сбрасываем состояние FSM
     await state.clear()
@@ -73,64 +64,52 @@ async def process_support_message(message: Message, state: FSMContext) -> None:
     # Собираем информацию о пользователе
     user_info = {
         'id': message.from_user.id,
-        'username': f"@{message.from_user.username}" if message.from_user.username else "Нет",
+        'username': f"@{message.from_user.username}" if message.from_user.username else "No",
     }
     
-    # Формируем текст заявки для операторов
-    support_request_text = (
-        "Новая заявка в поддержку\n\n"
-        f"👤 Пользователь: {user_info['username']}\n"
-        f"🆔 ID: {user_info['id']}\n"
-        f"📄 Текст заявки: \"{message.text}\"\n"
+    # Формируем текст заявки для операторов, используя локализацию
+    support_request_text = translator.get_message(
+        'ru',
+        "support_request_admin",
+        username=user_info['username'],
+        user_id=user_info['id'],
+        text=message.text
     )
 
-    # Создаем кнопку "Ответить"
+    # Создаем кнопку "Ответить" с локализованным текстом
     builder = InlineKeyboardBuilder()
-    builder.button(text="Ответить", callback_data=f"reply_to_support")
+    builder.button(text=translator.get_button('ru', "reply_admin"), callback_data=f"reply_to_support:{message.from_user.id}")
     builder.adjust(1)
 
     # Пересылаем сообщение пользователя в чат поддержки с кнопкой "Ответить"
     for group in ADMIN_GROUPS:
-        await message.bot.send_message(
-            chat_id=group,
-            text=support_request_text,
-            reply_markup=builder.as_markup()
-        )
-    
-    # Если пользователь прислал фото, пересылаем его отдельно
-    if message.photo:
-        for group in ADMIN_GROUPS:
-            await message.bot.send_photo(
+        try:
+            await message.bot.send_message(
                 chat_id=group,
-                photo=message.photo[-1].file_id,
-                caption="Скриншоты: [файлы]"
+                text=support_request_text,
+                reply_markup=builder.as_markup()
             )
+            
+            # Если пользователь прислал фото, пересылаем его отдельно
+            if message.photo:
+                await message.bot.send_photo(
+                    chat_id=group,
+                    photo=message.photo[-1].file_id,
+                    caption=translator.get_message('ru', "support_screenshots")
+                )
+        except Exception as e:
+            # Логируем ошибку, если не удалось отправить сообщение
+            print(f"Failed to send support request to group {group}: {e}")
 
 # Обработчик для кнопки "Ответить" в административной группе
-@router.callback_query(F.data == 'reply_to_support')
+@router.callback_query(F.data.startswith('reply_to_support'))
 async def reply_handler(callback: CallbackQuery, state: FSMContext) -> None:
-    # Просим администратора ввести ID пользователя
-    await state.set_state(AdminReplyState.waiting_for_user_id)
-    await callback.message.answer(
-        "Введите ID пользователя, которому вы хотите ответить."
-    )
-    await callback.answer()
+    _, target_user_id = callback.data.split(":")
+    await state.set_state(AdminReplyState.waiting_for_reply_text)
+    await state.update_data(target_user_id=int(target_user_id))
 
-# Обработчик, который принимает ID пользователя от администратора
-@router.message(AdminReplyState.waiting_for_user_id)
-async def process_user_id(message: Message, state: FSMContext) -> None:
-    user_id_str = message.text.strip()
-    try:
-        user_id = int(user_id_str)
-        await state.update_data(target_user_id=user_id)
-        await state.set_state(AdminReplyState.waiting_for_reply_text)
-        await message.answer(
-            "ID пользователя сохранен. Теперь введите текст ответа."
-        )
-    except ValueError:
-        await message.answer(
-            "Неверный ID. Пожалуйста, введите корректный числовой ID."
-        )
+    await callback.message.answer(translator.get_message('ru', "admin_enter_reply_text"))
+    await callback.answer()
         
 # Обработчик, который принимает текст ответа от администратора и отправляет его пользователю
 @router.message(AdminReplyState.waiting_for_reply_text)
@@ -139,7 +118,7 @@ async def send_reply_to_user(message: Message, state: FSMContext) -> None:
     target_user_id = data.get('target_user_id')
 
     if target_user_id is None:
-        await message.answer("Ошибка: не удалось найти ID пользователя. Попробуйте начать заново.")
+        await message.answer(translator.get_message('ru', "admin_error_no_user_id"))
         await state.clear()
         return
     
@@ -147,13 +126,13 @@ async def send_reply_to_user(message: Message, state: FSMContext) -> None:
     
     try:
         # Формируем текст ответа для пользователя
-        final_text = f"🗣️ Ответ службы поддержки:\n\n{reply_text}"
+        final_text = translator.get_message('ru', "support_reply_to_user", text=reply_text)
         await message.bot.send_message(
             chat_id=target_user_id,
             text=final_text
         )
-        await message.answer("Ответ успешно отправлен пользователю.")
+        await message.answer(translator.get_message('ru', "admin_reply_sent_success"))
     except Exception as e:
-        await message.answer(f"Не удалось отправить сообщение пользователю: {e}")
+        await message.answer(translator.get_message('ru', "admin_reply_sent_error", error=e))
     finally:
         await state.clear()

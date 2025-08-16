@@ -1,7 +1,7 @@
 import re
 from aiogram import F, Router, html, Bot
 from aiogram.filters import Command, CommandStart
-from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, FSInputFile, InputMediaPhoto # Добавили FSInputFile и InputMediaPhoto
+from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, FSInputFile, InputMediaPhoto
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.fsm.context import FSMContext
 from aiogram import types
@@ -120,16 +120,17 @@ async def command_id_handler(message: Message) -> None:
     В личных сообщениях возвращает ID пользователя,
     в групповых чатах - ID чата.
     """
+    lang = db.get_user_language(message.from_user.id) if db.user_exists(message.from_user.id) else 'ru'
     chat_type = message.chat.type
     if chat_type == ChatType.PRIVATE:
         user_id = message.from_user.id
-        response_text = f"Your user ID: <code>{user_id}</code>"
+        response_text = translator.get_message(lang, 'id_user', user_id=user_id)
     elif chat_type in [ChatType.GROUP, ChatType.SUPERGROUP]:
         chat_id = message.chat.id
-        response_text = f"Chat ID: <code>{chat_id}</code>"
+        response_text = translator.get_message(lang, 'id_chat', chat_id=chat_id)
     else:
         # Для других типов чатов
-        response_text = "I can't provide an ID for this chat type."
+        response_text = translator.get_message(lang, 'id_other_chat')
 
     await message.answer(
         response_text,
@@ -147,11 +148,7 @@ async def handle_balance_command(message: Message) -> None:
     
     # Получаем язык пользователя. Если пользователь не зарегистрирован,
     # используем русский язык по умолчанию.
-    try:
-        user_data = db.get_user_data(user_id)
-        lang = user_data.get('language', 'ru')
-    except (NameError, AttributeError):
-        lang = 'ru'
+    lang = db.get_user_language(user_id) if db.user_exists(user_id) else 'ru'
 
     args = message.text.split()
 
@@ -179,10 +176,7 @@ async def handle_balance_command(message: Message) -> None:
             amount = -float(amount_str[1:])
         else:
             # Если нет знака, считаем это ошибкой
-            await message.answer(
-                "Неверный формат. Используйте /balance <сумма> "
-                "(например, /balance +100 или /balance -50)."
-            )
+            await message.answer(translator.get_message(lang, 'balance_change_syntax_error'))
             return
             
         current_balance = db.get_user_balance(user_id)
@@ -190,21 +184,17 @@ async def handle_balance_command(message: Message) -> None:
 
         # Проверка, чтобы баланс не стал отрицательным
         if new_balance < 0:
-            await message.answer("Недостаточно средств. Баланс не может быть отрицательным.")
+            await message.answer(translator.get_message(lang, 'insufficient_funds_to_change'))
             return
 
         # Обновляем баланс
         db.update_user_balance(user_id, amount)
         current_balance = db.get_user_balance(user_id)
         
-        await message.answer(f"Ваш баланс изменен. Теперь он составляет: {current_balance} TON")
+        await message.answer(translator.get_message(lang, 'balance_changed', value=current_balance))
 
     except (ValueError, IndexError):
-        await message.answer(
-            "Неверный формат. Используйте /balance <сумма> "
-            "(например, /balance +100 или /balance -50)."
-        )
-
+        await message.answer(translator.get_message(lang, 'balance_change_syntax_error'))
 
 
 # --- Новая команда /help ---
@@ -214,12 +204,6 @@ async def command_help_handler(message: Message) -> None:
     Обработчик для команды /help.
     Отправляет пользователю список всех доступных команд.
     """
-    help_text = (
-        "<b>Доступные команды:</b>\n\n"
-        "/start - Запустить бота и вернуться в главное меню\n"
-        "/help - Показать список команд и их описание\n"
-        "/balance - Показать текущий баланс или изменить его (например, /balance +100)\n"
-        "/id - Показать ваш уникальный ID\n"
-        "/addvip - Выдать разрешение на пополнение баланса (только для админов)"
-    )
+    lang = db.get_user_language(message.from_user.id) if db.user_exists(message.from_user.id) else 'ru'
+    help_text = translator.get_message(lang, 'help_text')
     await message.answer(help_text, parse_mode="HTML")

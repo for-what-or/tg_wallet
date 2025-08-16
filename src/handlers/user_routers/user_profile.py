@@ -238,7 +238,6 @@ async def process_top_up_amount(message: Message, state: FSMContext) -> None:
     # Устанавливаем новое состояние, ожидающее подтверждения перевода от пользователя
     await state.set_state(TopUpStates.waiting_for_confirmation)
 
-
 @router.callback_query(TopUpStates.waiting_for_confirmation, F.data == "confirm_transfer")
 async def confirm_transfer_handler(callback: CallbackQuery, state: FSMContext) -> None:
     """
@@ -249,28 +248,30 @@ async def confirm_transfer_handler(callback: CallbackQuery, state: FSMContext) -
     amount = state_data.get('amount')
 
     if amount is None:
-        await callback.message.edit_text("Произошла ошибка, попробуйте еще раз.")
+        # Используем локализованное сообщение об ошибке
+        await callback.message.edit_text(translator.get_message("top_up_error"))
         await state.clear()
         return
 
-    # Создаем клавиатуру для администратора
+    # Создаем клавиатуру для администратора с локализованными кнопками
     admin_builder = InlineKeyboardBuilder()
     admin_builder.button(
-        text="✅ Подтвердить",
+        text=translator.get_message("p2p_confirm"),
         callback_data=f"admin_confirm_top_up:{callback.from_user.id}:{amount}"
     )
     admin_builder.button(
-        text="❌ Отклонить",
+        text=translator.get_message("p2p_decline"),
         callback_data=f"admin_decline_top_up:{callback.from_user.id}:{amount}"
     )
     admin_builder.adjust(2)
     
-    # Формируем текст заявки для администратора
-    admin_text = (
-        "🔔 Новая заявка на пополнение\n\n"
-        f"👤 Пользователь: @{callback.from_user.username or 'N/A'}\n"
-        f"🆔 ID: {callback.from_user.id}\n"
-        f"💰 Сумма: {amount} TON"
+    # Формируем текст заявки для администратора, используя локализацию
+    admin_text = translator.get_message(
+        "admin_new_top_up_request",
+        username=callback.from_user.username or 'N/A',
+        user_id=callback.from_user.id,
+        amount=amount,
+        currency="TON"
     )
 
     # Отправляем заявку в чат поддержки
@@ -281,10 +282,10 @@ async def confirm_transfer_handler(callback: CallbackQuery, state: FSMContext) -
             reply_markup=admin_builder.as_markup()
         )
     
-    # Отправляем подтверждение пользователю
+    # Отправляем подтверждение пользователю с локализованным текстом
     photo = FSInputFile(PHOTO_PATH)
     await callback.message.edit_media(
-        media=InputMediaPhoto(media=photo, caption="✅ Ваша заявка на пополнение отправлена администраторам.\nОжидайте подтверждения."),
+        media=InputMediaPhoto(media=photo, caption=translator.get_message("top_up_request_sent_to_admins")),
         reply_markup=None
     )
     
@@ -310,16 +311,23 @@ async def admin_confirm_top_up(callback: CallbackQuery) -> None:
     new_balance = current_balance + amount
     db.update_user_data(user_id, {'balance': new_balance})
 
-    # Уведомляем администратора, что заявка подтверждена
+    # Уведомляем администратора, что заявка подтверждена, используя локализацию
     await callback.message.edit_text(
-        f"✅ Заявка на пополнение от пользователя {user_id} на сумму {amount} TON подтверждена."
+        translator.get_message(
+            "admin_request_confirmed_top_up",
+            user_id=user_id,
+            amount=amount,
+            currency="TON"
+        )
     )
-    await callback.answer("Заявка подтверждена")
+    await callback.answer(translator.get_message("admin_request_confirmed_alert"))
 
     # Уведомляем пользователя о пополнении
-    user_text = (
-        f"✅ Ваша заявка на пополнение на сумму {amount} TON была успешно подтверждена.\n"
-        f"Ваш новый баланс: {new_balance} TON."
+    user_text = translator.get_message(
+        "user_top_up_confirmed",
+        amount=amount,
+        currency="TON",
+        new_balance=new_balance
     )
     photo = FSInputFile(PHOTO_PATH)
     await callback.bot.send_photo(
@@ -340,20 +348,30 @@ async def admin_decline_top_up(callback: CallbackQuery) -> None:
     user_id = int(user_id_str)
     amount = float(amount_str)
 
-    # Уведомляем администратора об отказе
+    # Уведомляем администратора об отказе, используя локализацию
     await callback.message.edit_text(
-        f"❌ Заявка на пополнение от пользователя {user_id} на сумму {amount} TON отклонена."
+        translator.get_message(
+            "admin_request_declined_top_up",
+            user_id=user_id,
+            amount=amount,
+            currency="TON"
+        )
     )
-    await callback.answer("Заявка отклонена")
+    await callback.answer(translator.get_message("admin_request_declined_alert"))
 
-    # Уведомляем пользователя об отказе
-    user_text = f"❌ Ваша заявка на пополнение на сумму {amount} TON была отклонена администратором."
+    # Уведомляем пользователя об отказе, используя локализацию
+    user_text = translator.get_message(
+        "user_top_up_declined",
+        amount=amount,
+        currency="TON"
+    )
     photo = FSInputFile(PHOTO_PATH)
     await callback.bot.send_photo(
         chat_id=user_id,
         photo=photo,
         caption=user_text
     )
+
 
 
 @router.callback_query(F.data == "cancel_top_up")
