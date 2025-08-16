@@ -1,15 +1,18 @@
 import re
 from aiogram import F, Router, html
 from aiogram.filters import Command, CommandStart
-from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, FSInputFile
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.fsm.context import FSMContext
 from aiogram import types
+import datetime
 
 from src.locales import translator
 from src.database import db
 from src.states import *
+from src.utils.formatters import format_ton_wallet, format_card_number
 from src.handlers.user_routers.user_main import command_start_handler
+from src.config import ADMIN_GROUPS, PHOTO_PATH
 
 router = Router()
 
@@ -159,68 +162,204 @@ async def process_deal_amount(message: Message, state: FSMContext) -> None:
     builder.button(text=translator.get_button(lang, 'p2p_decline'), callback_data="decline_deal")
     builder.adjust(2)
     
-    await message.answer(confirmation_text, reply_markup=builder.as_markup(), parse_mode="Markdown")
+    # --- ИЗМЕНЕНИЕ: Отправляем фото с подписью и клавиатурой ---
+    photo = FSInputFile(PHOTO_PATH)
+    await message.answer_photo(
+        photo=photo,
+        caption=confirmation_text,
+        reply_markup=builder.as_markup(),
+        parse_mode="Markdown"
+    )
+    # --- КОНЕЦ ИЗМЕНЕНИЯ ---
+
     await state.set_state(P2PStates.waiting_for_confirmation)
 
 
+# ... (все хэндлеры до `confirm_deal_handler` остаются без изменений) ...
+
 @router.callback_query(P2PStates.waiting_for_confirmation, F.data == "confirm_deal")
-async def confirm_deal_handler(callback: CallbackQuery, state: FSMContext) -> None:
+async def confirm_deal_handler(callback: CallbackQuery, state: FSMContext) -> None: # --- ИЗМЕНЕНИЕ: Добавлен bot
+    """
+    Обработчик, который срабатывает после того, как пользователь подтвердил сделку.
+    Списывает средства, создает заявку и отправляет ее администраторам.
+    """
     user_data = db.get_user_data(callback.from_user.id)
     lang = user_data.get('language', 'ru')
     data = await state.get_data()
     
-    # Получаем текущий баланс и сумму сделки
-    current_balance = user_data.get('balance', 0)
+    current_balance = float(user_data.get('balance', 0))
     amount_to_deduct = data.get('amount')
     
-    # Проверяем, есть ли сумма и достаточно ли средств (хотя это уже проверялось ранее)
     if amount_to_deduct is None or current_balance < amount_to_deduct:
         await callback.message.edit_text(translator.get_message(lang, 'p2p_insufficient_balance'))
         await state.clear()
         await callback.answer()
         return
 
-    # Списываем средства с баланса пользователя
+    # 1. Списываем средства с баланса пользователя (они "замораживаются")
     new_balance = current_balance - amount_to_deduct
     db.update_user_data(callback.from_user.id, {'balance': new_balance})
 
-    # TODO: Здесь должна быть логика проведения сделки.
-    # 1. Найти получателя по `data['recipient_address']`.
-    # 2. Если получатель найден, списать с баланса отправителя `data['amount']`.
-    # 3. Зачислить эту сумму на баланс получателя.
-    # 4. Если получателя нет, деньги можно "списать в никуда" или вернуть пользователю.
+    # Определяем валюту
+    currency = 'TON' if data['recipient_type'] == 'ton_wallet' else 'RUB'
 
-    # Определяем валюту и адрес получения в зависимости от типа
-    if data['recipient_type'] == 'ton_wallet':
-        currency_name = 'TON'
-        address_label = 'Адрес получения'
-        currency_symbol = 'TON'
-    else: # card
-        currency_name = 'Rub'
-        address_label = 'Адрес получения'
-        currency_symbol = 'Рублей'
-        
-    final_confirmation_text = (
-        f"✅ *Запрос на вывод успешно оформлен*\n"
-        f"Ваш перевод обрабатывается. Средства будут зачислены в течение 1–24 часов в зависимости от загрузки сети.\n\n"
-        f"🔹 **Валюта:** {currency_name}\n"
-        f"🔹 **Сумма:** {data['amount']} {currency_symbol}\n"
-        f"🔹 **{address_label}:** `{data['recipient_address']}`\n\n"
-        f"Спасибо, что пользуетесь нашим сервисом!"
+    # 2. Создаем запись о сделке в БД со статусом 'pending'
+    deal_id = db.create_deal(
+        sender_id=callback.from_user.id,
+        recipient_address=data['recipient_address'],
+        recipient_type=data['recipient_type'],
+        amount=amount_to_deduct,
+        currency=currency
     )
 
-    builder = InlineKeyboardBuilder()
-    builder.button(text=translator.get_button(lang, 'back_to_main'), callback_data="back_to_main")
-    builder.adjust(1)
+    # 3. Формируем и отправляем заявку администраторам
+    admin_builder = InlineKeyboardBuilder()
+    admin_builder.button(text="✅ Подтвердить перевод", callback_data=f"admin_confirm_deal:{deal_id}")
+    admin_builder.button(text="❌ Отклонить", callback_data=f"admin_decline_deal:{deal_id}")
+    admin_builder.adjust(2)
     
-    await callback.message.edit_text(final_confirmation_text, reply_markup=builder.as_markup(), parse_mode="Markdown")
+    admin_text = (
+        f"🔔 Новая заявка на вывод средств №{deal_id}\n\n"
+        f"👤 Отправитель: @{callback.from_user.username or 'N/A'} (ID: {callback.from_user.id})\n"
+        f"💰 Сумма: {amount_to_deduct} {currency}\n"
+        f"💳 Тип получателя: {data['recipient_type']}\n"
+        f"📍 Адрес получателя: `{data['recipient_address']}`"
+    )
+
+    for group_id in ADMIN_GROUPS:
+        try:
+            await callback.bot.send_message(
+                chat_id=group_id,
+                text=admin_text,
+                reply_markup=admin_builder.as_markup(),
+                #parse_mode="Markdown"
+            )
+        except Exception as e:
+            print(f"Не удалось отправить сообщение в группу {group_id}: {e}")
+
+    # 4. Отправляем подтверждение пользователю
+    await callback.message.edit_text(
+        "✅ Ваша заявка на вывод средств отправлена администраторам.\n"
+        "Ожидайте подтверждения."
+    )
     
     await state.clear()
     await callback.answer()
 
+# --- НОВЫЕ ХЭНДЛЕРЫ ДЛЯ АДМИНОВ ---
+@router.callback_query(F.data.startswith("admin_confirm_deal:"))
+async def admin_confirm_deal_handler(callback: CallbackQuery) -> None:
+    """
+    Обработчик для кнопки 'Подтвердить перевод' в чате администратора.
+    """
+    deal_id = int(callback.data.split(':')[1])
+    deal_data = db.get_deal_by_id(deal_id)
+
+    if not deal_data or deal_data['status'] != 'pending':
+        await callback.answer("Эта заявка уже обработана.", show_alert=True)
+        return
+
+    # 1. Обновляем статус сделки в БД
+    db.update_deal_status(deal_id, 'confirmed')
+    
+    # Обновляем счетчик сделок у пользователя
+    sender_data = db.get_user_data(deal_data['sender_id'])
+    new_deals_count = sender_data.get('deals_count', 0) + 1
+    db.update_user_data(deal_data['sender_id'], {'deals_count': new_deals_count})
+
+
+    # 2. Уведомляем администратора
+    await callback.message.edit_text(
+        f"✅ Заявка на вывод №{deal_id} от пользователя {deal_data['sender_id']} на сумму {deal_data['amount']} {deal_data['currency']} ПОДТВЕРЖДЕНА.\n\n"
+        f"👨‍💻 Администратор: @{callback.from_user.username or 'N/A'}"
+    )
+    await callback.answer("Заявка подтверждена")
+
+    # 3. Уведомляем отправителя
+    try:
+        await callback.bot.send_message(
+            chat_id=deal_data['sender_id'],
+            text=f"✅ Ваша заявка на вывод средств на сумму {deal_data['amount']} {deal_data['currency']} была успешно подтверждена.\n"
+                 f"Средства отправлены на адрес: `{deal_data['recipient_address']}`",
+            parse_mode="Markdown"
+        )
+    except Exception as e:
+        print(f"Не удалось отправить уведомление отправителю {deal_data['sender_id']}: {e}")
+
+    # 4. Пытаемся уведомить получателя, если он есть в нашей БД
+    recipient_user = db.find_user_by_wallet_or_card(deal_data['recipient_address'])
+    if recipient_user:
+        try:
+            # --- НОВОЕ: Увеличиваем баланс получателя на сумму сделки ---
+            db.update_user_balance(recipient_user['user_id'], deal_data['amount'])
+            
+            # Получаем данные отправителя, чтобы указать его ник в сообщении получателю
+            sender_username = sender_data.get('username', 'Анонимный пользователь')
+            # Экранируем символы подчеркивания для корректного отображения в Markdown
+            escaped_username = sender_username.replace('_', '\\_')
+            
+            # Получаем текущую дату и форматируем кошелек
+            current_date = datetime.datetime.now().strftime('%Y-%m-%d %H:%M')
+            formatted_wallet = format_ton_wallet(deal_data.get('recipient_address', 'N/A'), 'N/A')
+
+            await callback.bot.send_message(
+                chat_id=recipient_user['user_id'],
+                text=(
+                    f"🎉 **Вам поступил перевод!**\n\n"
+                    f"**Отправитель:** @{escaped_username}\n"
+                    f"**Сумма:** {deal_data['amount']} {deal_data['currency']}\n"
+                    f"**Дата:** `{current_date}`\n"
+                    f"**Адрес:** `{formatted_wallet}`\n"
+                    f"**ID:** `{deal_id}`"
+                ),
+                parse_mode="Markdown"
+            )
+        except Exception as e:
+            print(f"Не удалось отправить уведомление получателю {recipient_user['user_id']}: {e}")
+
+
+
+@router.callback_query(F.data.startswith("admin_decline_deal:"))
+async def admin_decline_deal_handler(callback: CallbackQuery) -> None:
+    """
+    Обработчик для кнопки 'Отклонить' в чате администратора.
+    Возвращает средства на баланс отправителя.
+    """
+    deal_id = int(callback.data.split(':')[1])
+    deal_data = db.get_deal_by_id(deal_id)
+
+    if not deal_data or deal_data['status'] != 'pending':
+        await callback.answer("Эта заявка уже обработана.", show_alert=True)
+        return
+
+    # 1. Обновляем статус сделки в БД
+    db.update_deal_status(deal_id, 'declined')
+
+    # 2. ВОЗВРАЩАЕМ СРЕДСТВА НА БАЛАНС ОТПРАВИТЕЛЯ
+    db.update_user_balance(deal_data['sender_id'], deal_data['amount'])
+
+    # 3. Уведомляем администратора
+    await callback.message.edit_text(
+        f"❌ Заявка на вывод №{deal_id} от пользователя {deal_data['sender_id']} на сумму {deal_data['amount']} {deal_data['currency']} ОТКЛОНЕНА.\n\n"
+        f"👨‍💻 Администратор: @{callback.from_user.username or 'N/A'}"
+    )
+    await callback.answer("Заявка отклонена")
+
+    # 4. Уведомляем отправителя
+    try:
+        current_balance = db.get_user_balance(deal_data['sender_id'])
+        await callback.bot.send_message(
+            chat_id=deal_data['sender_id'],
+            text=f"❌ Ваша заявка на вывод средств на сумму {deal_data['amount']} {deal_data['currency']} была отклонена администратором.\n"
+                 f"Средства возвращены на ваш баланс. Текущий баланс: {current_balance} TON."
+        )
+    except Exception as e:
+        print(f"Не удалось отправить уведомление отправителю {deal_data['sender_id']}: {e}")
+
 
 @router.callback_query(P2PStates.waiting_for_confirmation, F.data == "decline_deal")
 async def decline_deal_handler(callback: CallbackQuery, state: FSMContext) -> None:
+    # Этот хэндлер остается без изменений, он просто отменяет сделку до отправки админам
     await callback.message.edit_text("Сделка отменена.")
     await state.clear()
     await callback.answer()

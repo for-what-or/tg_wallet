@@ -12,6 +12,7 @@ class UserDatabase:
         self._init_db()
         self._init_p2p_tables() # Инициализируем таблицы для P2P
         self._init_permissions_table() # Инициализируем новую таблицу для разрешений
+        self._init_deals_table()
 
     def _init_db(self):
         """Создает таблицу users, если она не существует."""
@@ -69,8 +70,79 @@ class UserDatabase:
                 )
             """)
             conn.commit()
+    
+    def _init_deals_table(self):
+        """ # --- НОВОЕ ---
+        Создает таблицу для хранения информации о P2P сделках.
+        """
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS p2p_deals (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    sender_id INTEGER NOT NULL,
+                    recipient_address TEXT NOT NULL,
+                    recipient_type TEXT NOT NULL,
+                    amount REAL NOT NULL,
+                    currency TEXT NOT NULL,
+                    status TEXT DEFAULT 'pending', -- pending, confirmed, declined
+                    created_at REAL DEFAULT (strftime('%s', 'now')),
+                    FOREIGN KEY (sender_id) REFERENCES users (user_id)
+                )
+            """)
+            conn.commit()
             
     # --- Методы для P2P ---
+
+    def create_deal(self, sender_id: int, recipient_address: str, recipient_type: str, amount: float, currency: str) -> int:
+        """
+        Создает новую запись о сделке в БД и возвращает ее ID.
+        """
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO p2p_deals (sender_id, recipient_address, recipient_type, amount, currency)
+                VALUES (?, ?, ?, ?, ?)
+            """, (sender_id, recipient_address, recipient_type, amount, currency))
+            conn.commit()
+            return cursor.lastrowid
+
+    def get_deal_by_id(self, deal_id: int) -> Optional[Dict]:
+        """
+        Возвращает информацию о сделке по ее ID.
+        """
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM p2p_deals WHERE id = ?", (deal_id,))
+            row = cursor.fetchone()
+            return dict(row) if row else None
+
+    def update_deal_status(self, deal_id: int, status: str):
+        """
+        Обновляет статус сделки (pending, confirmed, declined).
+        """
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute("UPDATE p2p_deals SET status = ? WHERE id = ?", (status, deal_id))
+            conn.commit()
+
+    def find_user_by_wallet_or_card(self, address: str) -> Optional[Dict]:
+        """
+        Находит пользователя по адресу TON кошелька или номеру карты.
+        """
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            # Сначала ищем по кошельку
+            cursor.execute("SELECT user_id, username FROM users WHERE ton_wallet = ?", (address,))
+            row = cursor.fetchone()
+            if row:
+                return dict(row)
+            # Если не нашли, ищем по номеру карты
+            cursor.execute("SELECT user_id, username FROM users WHERE card_number = ?", (address,))
+            row = cursor.fetchone()
+            return dict(row) if row else None
 
     def add_p2p_pair(self, pair_name: str) -> bool:
         """Добавляет новую валютную пару."""
