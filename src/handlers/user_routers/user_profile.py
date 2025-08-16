@@ -1,6 +1,6 @@
 import re
 from aiogram import F, Router, html
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import Message, CallbackQuery, InputMediaPhoto, FSInputFile
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.fsm.context import FSMContext
 
@@ -10,7 +10,7 @@ from src.states import *
 from src.utils.formatters import format_ton_wallet, format_card_number
 from src.handlers.user_routers.user_main import command_start_handler
 
-from src.config import ADMIN_GROUPS
+from src.config import ADMIN_GROUPS, PHOTO_PATH
 
 router = Router()
 
@@ -24,7 +24,7 @@ async def profile_handler(callback: CallbackQuery) -> None:
 
     builder = InlineKeyboardBuilder()
     builder.button(text=translator.get_button(lang, 'add_wallet'), callback_data="add_change_wallet")
-    builder.button(text=translator.get_button(lang, 'top_up_wallet'), callback_data="top_up_wallet") # <-- ДОБАВЛЕНО
+    builder.button(text=translator.get_button(lang, 'top_up_wallet'), callback_data="top_up_wallet")
     builder.button(text=translator.get_button(lang, 'ref_link'), callback_data="ref_link")
     builder.button(text=translator.get_button(lang, 'back'), callback_data="back_to_main")
     builder.adjust(1)
@@ -50,10 +50,13 @@ async def profile_handler(callback: CallbackQuery) -> None:
         card_number=formatted_card_number,
         deals_count=user_data.get('deals_count', 0)
     )
-
-    await callback.message.edit_text(profile_text, reply_markup=builder.as_markup())
+    
+    photo = FSInputFile(PHOTO_PATH)
+    await callback.message.edit_media(
+        media=InputMediaPhoto(media=photo, caption=profile_text, parse_mode="HTML"),
+        reply_markup=builder.as_markup()
+    )
     await callback.answer()
-
 
 
 # --- Добавление/изменение кошельков и карт ---
@@ -65,11 +68,12 @@ async def add_wallet_card_handler(callback: CallbackQuery) -> None:
     builder = InlineKeyboardBuilder()
     builder.button(text=translator.get_button(lang, 'add_ton_wallet'), callback_data="add_ton_wallet")
     builder.button(text=translator.get_button(lang, 'add_card'), callback_data="add_card")
-    builder.button(text=translator.get_button(lang, 'back'), callback_data="back_to_main")
+    builder.button(text=translator.get_button(lang, 'back'), callback_data="profile")
     builder.adjust(1)
     
-    await callback.message.edit_text(
-        translator.get_message(lang, 'select_add_type'),
+    photo = FSInputFile(PHOTO_PATH)
+    await callback.message.edit_media(
+        media=InputMediaPhoto(media=photo, caption=translator.get_message(lang, 'select_add_type'), parse_mode="HTML"),
         reply_markup=builder.as_markup()
     )
     await callback.answer()
@@ -85,8 +89,9 @@ async def add_ton_wallet_handler(callback: CallbackQuery, state: FSMContext) -> 
     builder.button(text=translator.get_button(lang, 'back'), callback_data="add_change_wallet")
     builder.adjust(1)
 
-    await callback.message.edit_text(
-        translator.get_message(lang, 'add_ton_wallet'),
+    photo = FSInputFile(PHOTO_PATH)
+    await callback.message.edit_media(
+        media=InputMediaPhoto(media=photo, caption=translator.get_message(lang, 'add_ton_wallet'), parse_mode="HTML"),
         reply_markup=builder.as_markup()
     )
     await state.set_state(WalletStates.waiting_for_wallet)
@@ -105,7 +110,13 @@ async def process_ton_wallet(message: Message, state: FSMContext) -> None:
     
     db.update_ton_wallet(message.from_user.id, wallet_address)
     await state.clear()
-    await message.answer(translator.get_message(lang, 'wallet_added_success'))
+    
+    photo = FSInputFile(PHOTO_PATH)
+    await message.bot.send_photo(
+        chat_id=message.chat.id,
+        photo=photo,
+        caption=translator.get_message(lang, 'wallet_added_success')
+    )
     await command_start_handler(message, state)
 
 
@@ -119,8 +130,9 @@ async def add_card_handler(callback: CallbackQuery, state: FSMContext) -> None:
     builder.button(text=translator.get_button(lang, 'back'), callback_data="add_change_wallet")
     builder.adjust(1)
 
-    await callback.message.edit_text(
-        translator.get_message(lang, 'add_card'),
+    photo = FSInputFile(PHOTO_PATH)
+    await callback.message.edit_media(
+        media=InputMediaPhoto(media=photo, caption=translator.get_message(lang, 'add_card'), parse_mode="HTML"),
         reply_markup=builder.as_markup()
     )
     await state.set_state(CardStates.waiting_for_card)
@@ -139,7 +151,13 @@ async def process_card_number(message: Message, state: FSMContext) -> None:
 
     db.update_card_number(message.from_user.id, card_number)
     await state.clear()
-    await message.answer(translator.get_message(lang, 'card_added_success'))
+    
+    photo = FSInputFile(PHOTO_PATH)
+    await message.bot.send_photo(
+        chat_id=message.chat.id,
+        photo=photo,
+        caption=translator.get_message(lang, 'card_added_success')
+    )
     await command_start_handler(message, state)
 
 # --- Логика пополнения кошелька ---
@@ -165,10 +183,10 @@ async def top_up_wallet_handler(callback: CallbackQuery, state: FSMContext) -> N
     
     text = translator.get_message(lang, 'top_up_enter_amount')
     
-    await callback.message.edit_text(
-        text, 
-        reply_markup=builder.as_markup(),
-        parse_mode="Markdown"
+    photo = FSInputFile(PHOTO_PATH)
+    await callback.message.edit_media(
+        media=InputMediaPhoto(media=photo, caption=text, parse_mode="Markdown"),
+        reply_markup=builder.as_markup()
     )
     
     # Устанавливаем состояние, ожидающее ввода суммы
@@ -208,7 +226,14 @@ async def process_top_up_amount(message: Message, state: FSMContext) -> None:
     # Формируем и отправляем сообщение с инструкцией по переводу
     text = translator.get_message(lang, 'top_up_wallet_text', ton_wallet_address=ton_wallet_address, amount=amount)
     
-    await message.answer(text, reply_markup=builder.as_markup(), parse_mode="Markdown")
+    photo = FSInputFile(PHOTO_PATH)
+    await message.bot.send_photo(
+        chat_id=message.chat.id,
+        photo=photo,
+        caption=text,
+        reply_markup=builder.as_markup(),
+        parse_mode="Markdown"
+    )
     
     # Устанавливаем новое состояние, ожидающее подтверждения перевода от пользователя
     await state.set_state(TopUpStates.waiting_for_confirmation)
@@ -257,9 +282,10 @@ async def confirm_transfer_handler(callback: CallbackQuery, state: FSMContext) -
         )
     
     # Отправляем подтверждение пользователю
-    await callback.message.edit_text(
-        "✅ Ваша заявка на пополнение отправлена администраторам.\n"
-        "Ожидайте подтверждения."
+    photo = FSInputFile(PHOTO_PATH)
+    await callback.message.edit_media(
+        media=InputMediaPhoto(media=photo, caption="✅ Ваша заявка на пополнение отправлена администраторам.\nОжидайте подтверждения."),
+        reply_markup=None
     )
     
     # Очищаем состояние пользователя
@@ -295,9 +321,11 @@ async def admin_confirm_top_up(callback: CallbackQuery) -> None:
         f"✅ Ваша заявка на пополнение на сумму {amount} TON была успешно подтверждена.\n"
         f"Ваш новый баланс: {new_balance} TON."
     )
-    await callback.bot.send_message(
+    photo = FSInputFile(PHOTO_PATH)
+    await callback.bot.send_photo(
         chat_id=user_id,
-        text=user_text
+        photo=photo,
+        caption=user_text
     )
 
 
@@ -320,9 +348,11 @@ async def admin_decline_top_up(callback: CallbackQuery) -> None:
 
     # Уведомляем пользователя об отказе
     user_text = f"❌ Ваша заявка на пополнение на сумму {amount} TON была отклонена администратором."
-    await callback.bot.send_message(
+    photo = FSInputFile(PHOTO_PATH)
+    await callback.bot.send_photo(
         chat_id=user_id,
-        text=user_text
+        photo=photo,
+        caption=user_text
     )
 
 
@@ -337,14 +367,13 @@ async def cancel_top_up_handler(callback: CallbackQuery, state: FSMContext) -> N
     builder.button(text=translator.get_button(lang, 'back_to_main'), callback_data="back_to_main")
     builder.adjust(1)
     
-    await callback.message.edit_text(
-        translator.get_message(lang, 'top_up_canceled'),
-        reply_markup=builder.as_markup(),
-        parse_mode="HTML"
+    photo = FSInputFile(PHOTO_PATH)
+    await callback.message.edit_media(
+        media=InputMediaPhoto(media=photo, caption=translator.get_message(lang, 'top_up_canceled'), parse_mode="HTML"),
+        reply_markup=builder.as_markup()
     )
     await state.clear()
     await callback.answer()
-
 
 
 # --- Обработчики, требующие привязанного кошелька ---
@@ -358,8 +387,9 @@ async def handle_wallet_required_action(callback: CallbackQuery, state: FSMConte
         builder = InlineKeyboardBuilder()
         builder.button(text=translator.get_button(lang, 'add_wallet'), callback_data="add_change_wallet")
         builder.adjust(1)
-        await callback.message.edit_text(
-            translator.get_message(lang, 'wallet_not_added_warning'),
+        photo = FSInputFile(PHOTO_PATH)
+        await callback.message.edit_media(
+            media=InputMediaPhoto(media=photo, caption=translator.get_message(lang, 'wallet_not_added_warning'), parse_mode="HTML"),
             reply_markup=builder.as_markup()
         )
         await callback.answer()
@@ -374,9 +404,9 @@ async def handle_wallet_required_action(callback: CallbackQuery, state: FSMConte
     builder.button(text=translator.get_button(lang, 'back'), callback_data="back_to_main")
     builder.adjust(1)
     
-    await callback.message.edit_text(
-        translator.get_message(lang, 'ref_link_text', referral_link=html.code(referral_link)),
-        reply_markup=builder.as_markup(),
-        parse_mode="HTML"
+    photo = FSInputFile(PHOTO_PATH)
+    await callback.message.edit_media(
+        media=InputMediaPhoto(media=photo, caption=translator.get_message(lang, 'ref_link_text', referral_link=html.code(referral_link)), parse_mode="HTML"),
+        reply_markup=builder.as_markup()
     )
     await callback.answer()

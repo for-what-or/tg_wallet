@@ -1,7 +1,7 @@
 import re
 from aiogram import F, Router, html, Bot
 from aiogram.filters import Command, CommandStart
-from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, FSInputFile, InputMediaPhoto # Добавили FSInputFile и InputMediaPhoto
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.fsm.context import FSMContext
 from aiogram import types
@@ -10,7 +10,7 @@ from aiogram.enums.chat_type import ChatType
 from src.locales import translator
 from src.database import db
 from src.states import *
-from src.config import ADMIN_GROUPS
+from src.config import ADMIN_GROUPS, PHOTO_PATH
 # Импортируем клавиатуры из нового файла
 from src.utils.keyboards import get_main_menu_keyboard, get_register_keyboard
 # Импортируем хелперы из нового файла
@@ -27,24 +27,31 @@ async def command_start_handler(update: types.Message | types.CallbackQuery, sta
     await state.clear()
     user_id = update.from_user.id
     
+    # Создаем объект файла для фото
+    photo = FSInputFile(PHOTO_PATH)
+
     if db.user_exists(user_id):
         lang = db.get_user_language(user_id)
         text = translator.get_message(lang, 'welcome')
         keyboard = get_main_menu_keyboard(lang)
         
         if isinstance(update, types.Message):
-            await update.answer(text=text, reply_markup=keyboard, parse_mode="HTML")
+            # Отправляем новое фото-сообщение для команды /start
+            await update.answer_photo(photo=photo, caption=text, reply_markup=keyboard, parse_mode="HTML")
         else:
-            await update.message.edit_text(text=text, reply_markup=keyboard, parse_mode="HTML")
+            # Редактируем предыдущее сообщение для кнопки "Назад", заменяя его на фото с новым текстом
+            await update.message.edit_media(media=InputMediaPhoto(media=photo, caption=text, parse_mode="HTML"), reply_markup=keyboard)
     else:
         # Для незарегистрированных пользователей всегда используем русский
         text = translator.get_message('ru', 'first_message')
         keyboard = get_register_keyboard('ru')
         
         if isinstance(update, types.Message):
-            await update.answer(text=text, reply_markup=keyboard, parse_mode="HTML")
+            # Отправляем новое фото-сообщение для нового пользователя
+            await update.answer_photo(photo=photo, caption=text, reply_markup=keyboard, parse_mode="HTML")
         else:
-            await update.message.edit_text(text=text, reply_markup=keyboard, parse_mode="HTML")
+            # Редактируем предыдущее сообщение для кнопки "Назад"
+            await update.message.edit_media(media=InputMediaPhoto(media=photo, caption=text, parse_mode="HTML"), reply_markup=keyboard)
         
         # Используем translator для формирования текста о новом пользователе
         new_user_text = translator.get_message(

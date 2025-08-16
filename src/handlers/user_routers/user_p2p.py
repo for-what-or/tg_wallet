@@ -1,8 +1,8 @@
 import re
-import html  # Явно импортируем стандартный модуль html
+import html 
 from aiogram import F, Router
 from aiogram.filters import Command, CommandStart
-from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, FSInputFile, InputMediaPhoto
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.fsm.context import FSMContext
 from aiogram import types
@@ -11,9 +11,9 @@ from src.locales import translator
 from src.database import db
 from src.states import *
 from src.handlers.user_routers.user_main import command_start_handler
+from src.config import * # Импортируем все переменные из модуля config
 
 router = Router()
-
 
 # --- P2P Обмен ---
 # Обработчик для кнопки "P2P Обмен"
@@ -39,15 +39,15 @@ async def p2p_menu_handler(callback: CallbackQuery) -> None:
     builder.button(text=translator.get_button(lang, 'back'), callback_data="back_to_main")
     builder.adjust(1)
     
-    await callback.message.edit_text(
-        translator.get_message(lang, 'p2p_description'),
-        reply_markup=builder.as_markup(),
-        parse_mode="HTML"
+    # Используем путь к файлу, импортированный напрямую
+    photo = FSInputFile(PHOTO_PATH)
+    await callback.message.edit_media(
+        media=InputMediaPhoto(media=photo, caption=translator.get_message(lang, 'p2p_description'), parse_mode="HTML"),
+        reply_markup=builder.as_markup()
     )
     await callback.answer()
 
 # Обработчик для выбора валютной пары в P2P
-# Используем более точный фильтр, чтобы избежать конфликта с кнопками трейдеров
 @router.callback_query(F.data.startswith('p2p_') & ~F.data.startswith('p2p_trader_select:'))
 async def p2p_select_currency_handler(callback: CallbackQuery) -> None:
     user_data = db.get_user_data(callback.from_user.id)
@@ -89,29 +89,36 @@ async def p2p_select_currency_handler(callback: CallbackQuery) -> None:
     builder.button(text=translator.get_button(lang, 'back'), callback_data="p2p")
     builder.adjust(1)
     
-    await callback.message.edit_text(traders_text, reply_markup=builder.as_markup(), parse_mode="HTML")
+    # Используем путь к файлу, импортированный напрямую
+    photo = FSInputFile(PHOTO_PATH)
+    await callback.message.edit_media(
+        media=InputMediaPhoto(media=photo, caption=traders_text, parse_mode="HTML"),
+        reply_markup=builder.as_markup()
+    )
     await callback.answer()
 
-# Новый обработчик для выбора конкретного трейдера, который теперь сразу сообщает о недостаточном балансе
+# Новый обработчик для выбора конкретного трейдера
 @router.callback_query(F.data.startswith('p2p_trader_select:'))
 async def p2p_select_trader_handler(callback: CallbackQuery) -> None:
     user_id = callback.from_user.id
     user_data = db.get_user_data(user_id)
     lang = user_data.get('language', 'ru')
     
-    # Мы больше не показываем детали трейдера, а сразу выводим сообщение о недостатке средств
     response_text = translator.get_message(lang, 'not_enough_balance')
     
     builder = InlineKeyboardBuilder()
     builder.button(text=translator.get_button(lang, 'back_to_main'), callback_data="back_to_main")
     
-    await callback.message.edit_text(response_text, reply_markup=builder.as_markup(), parse_mode="HTML")
+    # Используем путь к файлу, импортированный напрямую
+    photo = FSInputFile(PHOTO_PATH)
+    await callback.message.edit_media(
+        media=InputMediaPhoto(media=photo, caption=response_text, parse_mode="HTML"),
+        reply_markup=builder.as_markup()
+    )
     await callback.answer(response_text, parse_mode="HTML", show_alert=True)
 
 
 # Обработчик для подтверждения продажи
-# Этот обработчик остается, но теперь он не вызывается из p2p_select_trader_handler
-# Он может быть полезен, если в будущем вы захотите изменить логику
 @router.callback_query(F.data.startswith('p2p_sell:'))
 async def p2p_sell_handler(callback: CallbackQuery, state: FSMContext) -> None:
     user_id = callback.from_user.id
@@ -126,27 +133,34 @@ async def p2p_sell_handler(callback: CallbackQuery, state: FSMContext) -> None:
         await callback.answer()
         return
 
-    # Предполагаем, что продается вся доступная валюта до лимита трейдера
     currency_to_sell = trader_listing['currency_pair'].split('_')[0]
     amount_to_sell = min(user_data.get(currency_to_sell, 0), trader_listing['limit'])
     
     if user_data.get(currency_to_sell, 0) < amount_to_sell:
-        # Условие, если не хватает для продажи
         response_text = translator.get_message(lang, 'not_enough_balance')
         builder = InlineKeyboardBuilder()
         builder.button(text=translator.get_button(lang, 'back'), callback_data="back_to_main")
-        await callback.message.edit_text(response_text, reply_markup=builder.as_markup(), parse_mode="HTML")
+        
+        # Используем путь к файлу, импортированный напрямую
+        photo = FSInputFile(PHOTO_PATH)
+        await callback.message.edit_media(
+            media=InputMediaPhoto(media=photo, caption=response_text, parse_mode="HTML"),
+            reply_markup=builder.as_markup()
+        )
         await callback.answer()
         return
 
-    # Имитация списания средств
     db.update_balance(user_id, currency_to_sell, user_data[currency_to_sell] - amount_to_sell)
 
-    # Уведомление о зачислении средств
     response_text = translator.get_message(lang, 'funds_transfer_notice')
     
     builder = InlineKeyboardBuilder()
     builder.button(text=translator.get_button(lang, 'back_to_main'), callback_data="back_to_main")
     
-    await callback.message.edit_text(response_text, reply_markup=builder.as_markup(), parse_mode="HTML")
+    # Используем путь к файлу, импортированный напрямую
+    photo = FSInputFile(PHOTO_PATH)
+    await callback.message.edit_media(
+        media=InputMediaPhoto(media=photo, caption=response_text, parse_mode="HTML"),
+        reply_markup=builder.as_markup()
+    )
     await callback.answer()

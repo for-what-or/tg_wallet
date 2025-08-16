@@ -1,7 +1,8 @@
 import re
 import html
 from aiogram import F, Router, types
-from aiogram.types import CallbackQuery, Message
+from aiogram.filters import Command, CommandStart
+from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, FSInputFile, InputMediaPhoto
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -9,18 +10,10 @@ from aiogram.fsm.state import State, StatesGroup
 # Предполагается, что эти модули доступны
 from src.database import db
 from src.locales import translator
-from src.config import ADMIN_GROUPS
+from src.config import * # Импортируем все переменные из config
+from src.states import *
 
 router = Router()
-
-# Создаем группу состояний для диалога с поддержкой пользователя
-class SupportState(StatesGroup):
-    waiting_for_message = State()
-
-# Создаем группу состояний для диалога с администратором по поводу ответа
-class AdminReplyState(StatesGroup):
-    waiting_for_user_id = State()
-    waiting_for_reply_text = State()
 
 @router.callback_query(F.data == 'support')
 async def support_handler(callback: CallbackQuery, state: FSMContext) -> None:
@@ -54,8 +47,10 @@ async def support_handler(callback: CallbackQuery, state: FSMContext) -> None:
         "Опишите вашу проблему максимально подробно."
     )
     
-    await callback.message.edit_text(
-        text,
+    # Используем FSInputFile и InputMediaPhoto для отправки фото
+    photo = FSInputFile(PHOTO_PATH)
+    await callback.message.edit_media(
+        media=InputMediaPhoto(media=photo, caption=text, parse_mode="HTML"),
         reply_markup=builder.as_markup()
     )
     await callback.answer()

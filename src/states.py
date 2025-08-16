@@ -70,3 +70,11 @@ class AdminUserManagement(StatesGroup):
     waiting_for_user_id = State()      # Ожидание ввода ID пользователя
     viewing_user_profile = State()     # Просмотр профиля конкретного пользователя
     editing_field = State()            # Ожидание нового значения для поля
+
+class SupportState(StatesGroup):
+    waiting_for_message = State()
+
+# Создаем группу состояний для диалога с администратором по поводу ответа
+class AdminReplyState(StatesGroup):
+    waiting_for_user_id = State()
+    waiting_for_reply_text = State()

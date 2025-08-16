@@ -1,7 +1,7 @@
 import re
 from aiogram import F, Router, html
 from aiogram.filters import Command, CommandStart
-from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, FSInputFile
+from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, FSInputFile, InputMediaPhoto
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.fsm.context import FSMContext
 from aiogram import types
@@ -37,11 +37,14 @@ async def handle_wallet_required_action(callback: CallbackQuery, state: FSMConte
     builder.button(text=translator.get_button(lang, 'add_card'), callback_data="add_recipient_card")
     builder.button(text=translator.get_button(lang, 'back'), callback_data="back_to_main")
     builder.adjust(1)
-
-    await callback.message.edit_text(
-        translator.get_message(lang, 'p2p_enter_recipient_type'),
+    
+    # Редактируем сообщение, заменяя его на фото с новым текстом
+    photo = FSInputFile(PHOTO_PATH)
+    await callback.message.edit_media(
+        media=InputMediaPhoto(media=photo, caption=translator.get_message(lang, 'p2p_enter_recipient_type')),
         reply_markup=builder.as_markup()
     )
+
     await state.set_state(P2PStates.waiting_for_recipient_type)
     await callback.answer()
 
@@ -56,10 +59,12 @@ async def add_recipient_ton_wallet_handler(callback: CallbackQuery, state: FSMCo
     builder.button(text=translator.get_button(lang, 'back'), callback_data="create_deal")
     builder.adjust(1)
 
-    await callback.message.edit_text(
-        translator.get_message(lang, 'p2p_enter_recipient_wallet'),
+    # Редактируем подпись (caption) сообщения
+    await callback.message.edit_caption(
+        caption=translator.get_message(lang, 'p2p_enter_recipient_wallet'),
         reply_markup=builder.as_markup()
     )
+    
     await state.set_state(P2PStates.waiting_for_recipient_wallet)
     await state.update_data(recipient_type='ton_wallet')
     await callback.answer()
@@ -74,10 +79,12 @@ async def add_recipient_card_handler(callback: CallbackQuery, state: FSMContext)
     builder.button(text=translator.get_button(lang, 'back'), callback_data="create_deal")
     builder.adjust(1)
 
-    await callback.message.edit_text(
-        translator.get_message(lang, 'p2p_enter_recipient_card'),
+    # Редактируем подпись (caption) сообщения
+    await callback.message.edit_caption(
+        caption=translator.get_message(lang, 'p2p_enter_recipient_card'),
         reply_markup=builder.as_markup()
     )
+    
     await state.set_state(P2PStates.waiting_for_recipient_card)
     await state.update_data(recipient_type='card')
     await callback.answer()
@@ -95,10 +102,8 @@ async def process_recipient_ton_wallet(message: Message, state: FSMContext) -> N
     await state.update_data(recipient_address=wallet_address)
     await message.answer(translator.get_message(lang, 'p2p_wallet_added_success'))
     
-    # --- ИЗМЕНЕНИЕ ---
     # Теперь запрашиваем сумму в TON
     await message.answer(translator.get_message(lang, 'p2p_enter_ton_amount'))
-    # --- /ИЗМЕНЕНИЕ ---
     
     await state.set_state(P2PStates.waiting_for_amount)
 
@@ -115,10 +120,8 @@ async def process_recipient_card(message: Message, state: FSMContext) -> None:
     await state.update_data(recipient_address=card_number)
     await message.answer(translator.get_message(lang, 'p2p_card_added_success'))
     
-    # --- ИЗМЕНЕНИЕ ---
     # Теперь запрашиваем сумму в RUB
     await message.answer(translator.get_message(lang, 'p2p_enter_rub_amount'))
-    # --- /ИЗМЕНЕНИЕ ---
     
     await state.set_state(P2PStates.waiting_for_amount)
 
@@ -136,14 +139,11 @@ async def process_deal_amount(message: Message, state: FSMContext) -> None:
         await message.answer(translator.get_message(lang, 'p2p_invalid_amount'))
         return
     
-    # --- ИЗМЕНЕНИЕ: Проверка баланса ---
-    # Получаем текущий баланс пользователя
+    # Проверка баланса
     user_balance = float(user_data.get('balance', 0))
-    # Проверяем, достаточно ли средств для сделки
     if amount > user_balance:
         await message.answer(translator.get_message(lang, 'p2p_insufficient_balance'))
         return
-    # --- /ИЗМЕНЕНИЕ ---
 
     await state.update_data(amount=amount)
     data = await state.get_data()
@@ -162,7 +162,6 @@ async def process_deal_amount(message: Message, state: FSMContext) -> None:
     builder.button(text=translator.get_button(lang, 'p2p_decline'), callback_data="decline_deal")
     builder.adjust(2)
     
-    # --- ИЗМЕНЕНИЕ: Отправляем фото с подписью и клавиатурой ---
     photo = FSInputFile(PHOTO_PATH)
     await message.answer_photo(
         photo=photo,
@@ -170,7 +169,6 @@ async def process_deal_amount(message: Message, state: FSMContext) -> None:
         reply_markup=builder.as_markup(),
         parse_mode="Markdown"
     )
-    # --- КОНЕЦ ИЗМЕНЕНИЯ ---
 
     await state.set_state(P2PStates.waiting_for_confirmation)
 
@@ -178,7 +176,7 @@ async def process_deal_amount(message: Message, state: FSMContext) -> None:
 # ... (все хэндлеры до `confirm_deal_handler` остаются без изменений) ...
 
 @router.callback_query(P2PStates.waiting_for_confirmation, F.data == "confirm_deal")
-async def confirm_deal_handler(callback: CallbackQuery, state: FSMContext) -> None: # --- ИЗМЕНЕНИЕ: Добавлен bot
+async def confirm_deal_handler(callback: CallbackQuery, state: FSMContext) -> None:
     """
     Обработчик, который срабатывает после того, как пользователь подтвердил сделку.
     Списывает средства, создает заявку и отправляет ее администраторам.
@@ -191,7 +189,8 @@ async def confirm_deal_handler(callback: CallbackQuery, state: FSMContext) -> No
     amount_to_deduct = data.get('amount')
     
     if amount_to_deduct is None or current_balance < amount_to_deduct:
-        await callback.message.edit_text(translator.get_message(lang, 'p2p_insufficient_balance'))
+        # --- ИЗМЕНЕНИЕ: Используем edit_caption для обновления фото-сообщения ---
+        await callback.message.edit_caption(caption=translator.get_message(lang, 'p2p_insufficient_balance'))
         await state.clear()
         await callback.answer()
         return
@@ -232,14 +231,14 @@ async def confirm_deal_handler(callback: CallbackQuery, state: FSMContext) -> No
                 chat_id=group_id,
                 text=admin_text,
                 reply_markup=admin_builder.as_markup(),
-                #parse_mode="Markdown"
             )
         except Exception as e:
             print(f"Не удалось отправить сообщение в группу {group_id}: {e}")
 
     # 4. Отправляем подтверждение пользователю
-    await callback.message.edit_text(
-        "✅ Ваша заявка на вывод средств отправлена администраторам.\n"
+    # --- ИЗМЕНЕНИЕ: Используем edit_caption для обновления фото-сообщения ---
+    await callback.message.edit_caption(
+        caption="✅ Ваша заявка на вывод средств отправлена администраторам.\n"
         "Ожидайте подтверждения."
     )
     
@@ -290,7 +289,7 @@ async def admin_confirm_deal_handler(callback: CallbackQuery) -> None:
     recipient_user = db.find_user_by_wallet_or_card(deal_data['recipient_address'])
     if recipient_user:
         try:
-            # --- НОВОЕ: Увеличиваем баланс получателя на сумму сделки ---
+            # Увеличиваем баланс получателя на сумму сделки
             db.update_user_balance(recipient_user['user_id'], deal_data['amount'])
             
             # Получаем данные отправителя, чтобы указать его ник в сообщении получателю
@@ -316,7 +315,6 @@ async def admin_confirm_deal_handler(callback: CallbackQuery) -> None:
             )
         except Exception as e:
             print(f"Не удалось отправить уведомление получателю {recipient_user['user_id']}: {e}")
-
 
 
 @router.callback_query(F.data.startswith("admin_decline_deal:"))
@@ -359,7 +357,7 @@ async def admin_decline_deal_handler(callback: CallbackQuery) -> None:
 
 @router.callback_query(P2PStates.waiting_for_confirmation, F.data == "decline_deal")
 async def decline_deal_handler(callback: CallbackQuery, state: FSMContext) -> None:
-    # Этот хэндлер остается без изменений, он просто отменяет сделку до отправки админам
-    await callback.message.edit_text("Сделка отменена.")
+    # --- ИЗМЕНЕНИЕ: Используем edit_caption для обновления фото-сообщения ---
+    await callback.message.edit_caption(caption="Сделка отменена.")
     await state.clear()
     await callback.answer()

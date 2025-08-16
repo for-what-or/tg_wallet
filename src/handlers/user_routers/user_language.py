@@ -1,13 +1,14 @@
+import asyncio
 from aiogram import F, Router, html
-from aiogram.types import CallbackQuery
+from aiogram.types import CallbackQuery, FSInputFile, InputMediaPhoto # Добавили FSInputFile и InputMediaPhoto
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.fsm.context import FSMContext
-import asyncio
 
 from src.locales import translator
 from src.database import db
 from src.states import *
 from src.handlers.user_routers.user_main import command_start_handler
+from src.config import PHOTO_PATH
 
 router = Router()
 # Список доступных языков, который легко расширять
@@ -15,7 +16,7 @@ router = Router()
 AVAILABLE_LANGUAGES = {
     'en': 'English',
     'ru': 'Русский',
-    #'es': 'Español'  # Пример нового языка
+    #'es': 'Español'   # Пример нового языка
 }
 
 # --- Команда /language_change ---
@@ -26,11 +27,10 @@ async def language_handler(callback: CallbackQuery, state: FSMContext) -> None:
     Динамически генерирует кнопки для каждого доступного языка.
     """
     try:
-        # Пытаемся получить язык пользователя, если доступны
-        # user_data = db.get_user_data(callback.from_user.id)
-        # lang = user_data.get('language', 'ru')
-        lang = 'ru'
-    except NameError:
+        # Пытаемся получить язык пользователя
+        user_data = db.get_user_data(callback.from_user.id)
+        lang = user_data.get('language', 'ru')
+    except (NameError, AttributeError):
         lang = 'ru'
 
     builder = InlineKeyboardBuilder()
@@ -52,11 +52,14 @@ async def language_handler(callback: CallbackQuery, state: FSMContext) -> None:
     builder.adjust(2, 1)
 
     text = translator.get_message(lang, 'choose_language')
-    
-    await callback.message.edit_text(
-        text,
+    photo = FSInputFile(PHOTO_PATH)
+
+    # Редактируем предыдущее сообщение, заменяя его на фото с новым текстом
+    await callback.message.edit_media(
+        media=InputMediaPhoto(media=photo, caption=text, parse_mode="HTML"), 
         reply_markup=builder.as_markup()
     )
+    
     await state.set_state(LanguageStates.choosing_language)
     await callback.answer()
 
@@ -74,11 +77,10 @@ async def set_language_handler(callback: CallbackQuery, state: FSMContext) -> No
     # Обновляем язык в базе данных
     db.update_language(callback.from_user.id, new_lang)
     
-    
-    # Предполагаем, что эта функция существует и переводит пользователя
-    # в главное меню
-    await callback.message.edit_text(
-        translator.get_message(new_lang, 'language_changed', language=new_lang.upper())
+    # Редактируем ПОДПИСЬ сообщения, а не текст
+    await callback.message.edit_caption(
+        caption=translator.get_message(new_lang, 'language_changed', language=new_lang.upper()),
+        parse_mode="HTML"
     )
     
     # Ждем 1 секунду
