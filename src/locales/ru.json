@@ -75,6 +75,7 @@
     "admin_send_message_error": "⚠️ Не удалось отправить сообщение в группу {group_id}: {error}",
     "admin_notify_sender_error": "⚠️ Не удалось отправить уведомление отправителю {user_id}: {error}",
     "admin_notify_recipient_error": "⚠️ Не удалось отправить уведомление получателю {user_id}: {error}",
+    "language_changed": "✅ Язык изменен на: {language}",
     "rub_symbol": "Рублей",
     "anonymous_user": "Анонимный пользователь",
     "trader_not_found": "⚠️ Трейдер не найден или сделка уже неактивна.",

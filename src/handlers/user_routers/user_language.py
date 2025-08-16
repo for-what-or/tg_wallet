@@ -16,7 +16,7 @@ router = Router()
 AVAILABLE_LANGUAGES = {
     'en': 'English',
     'ru': 'Русский',
-    #'es': 'Español'   # Пример нового языка
+    'cn': '中文',
 }
 
 # --- Команда /language_change ---
