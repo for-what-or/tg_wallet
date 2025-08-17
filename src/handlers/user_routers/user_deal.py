@@ -208,12 +208,11 @@ async def confirm_deal_handler(callback: CallbackQuery, state: FSMContext) -> No
 
     # 3. Формируем и отправляем заявку администраторам
     admin_builder = InlineKeyboardBuilder()
-    admin_builder.button(text=translator.get_message('ru', 'confirm_transfer_btn'), callback_data=f"admin_confirm_deal:{deal_id}")
+    admin_builder.button(text=translator.get_button('ru', 'p2p_confirm'), callback_data=f"admin_confirm_deal:{deal_id}")
     admin_builder.button(text=translator.get_button('ru', 'p2p_decline'), callback_data=f"admin_decline_deal:{deal_id}")
     admin_builder.adjust(2)
     
     admin_text = translator.get_message('ru', 'admin_new_withdrawal_request',
-        deal_id=deal_id,
         username=callback.from_user.username or 'N/A',
         user_id=callback.from_user.id,
         amount=amount_to_deduct,
@@ -266,7 +265,6 @@ async def admin_confirm_deal_handler(callback: CallbackQuery) -> None:
     # 2. Уведомляем администратора
     await callback.message.edit_text(
         translator.get_message('ru', 'admin_request_confirmed',
-            deal_id=deal_id,
             sender_id=deal_data['sender_id'],
             amount=deal_data['amount'],
             currency=deal_data['currency'],
@@ -343,7 +341,6 @@ async def admin_decline_deal_handler(callback: CallbackQuery) -> None:
     # 3. Уведомляем администратора
     await callback.message.edit_text(
         translator.get_message('ru', 'admin_request_declined',
-            deal_id=deal_id,
             sender_id=deal_data['sender_id'],
             amount=deal_data['amount'],
             currency=deal_data['currency'],

@@ -117,6 +117,7 @@ async def process_ton_wallet(message: Message, state: FSMContext) -> None:
         photo=photo,
         caption=translator.get_message(lang, 'wallet_added_success')
     )
+    # The original call to command_start_handler did not pass the state, so it's been updated.
     await command_start_handler(message, state)
 
 
@@ -158,6 +159,7 @@ async def process_card_number(message: Message, state: FSMContext) -> None:
         photo=photo,
         caption=translator.get_message(lang, 'card_added_success')
     )
+    # The original call to command_start_handler did not pass the state, so it's been updated.
     await command_start_handler(message, state)
 
 # --- Логика пополнения кошелька ---
@@ -185,7 +187,7 @@ async def top_up_wallet_handler(callback: CallbackQuery, state: FSMContext) -> N
     
     photo = FSInputFile(PHOTO_PATH)
     await callback.message.edit_media(
-        media=InputMediaPhoto(media=photo, caption=text, parse_mode="Markdown"),
+        media=InputMediaPhoto(media=photo, caption=text, parse_mode="HTML"), # ИСПРАВЛЕНИЕ: Используем HTML
         reply_markup=builder.as_markup()
     )
     
@@ -223,8 +225,15 @@ async def process_top_up_amount(message: Message, state: FSMContext) -> None:
     builder.button(text=translator.get_button(lang, 'cancel_top_up'), callback_data="cancel_top_up")
     builder.adjust(1, 1)
     
-    # Формируем и отправляем сообщение с инструкцией по переводу
-    text = translator.get_message(lang, 'top_up_wallet_text', ton_wallet_address=ton_wallet_address, amount=amount)
+    # Формируем текст заявки для администратора
+    # FIX: Telegram's HTML parser doesn't support <br>. We replace it with '\n'.
+    text = translator.get_message(
+        lang, 
+        'top_up_wallet_text', 
+        # ИСПРАВЛЕНИЕ: Используем html.code() для корректного отображения адреса
+        ton_wallet_address=html.code(ton_wallet_address), 
+        amount=amount
+    ).replace('<br>', '\n')
     
     photo = FSInputFile(PHOTO_PATH)
     await message.bot.send_photo(
@@ -232,7 +241,7 @@ async def process_top_up_amount(message: Message, state: FSMContext) -> None:
         photo=photo,
         caption=text,
         reply_markup=builder.as_markup(),
-        parse_mode="Markdown"
+        parse_mode="HTML" # ИСПРАВЛЕНИЕ: Используем HTML
     )
     
     # Устанавливаем новое состояние, ожидающее подтверждения перевода от пользователя
@@ -244,29 +253,31 @@ async def confirm_transfer_handler(callback: CallbackQuery, state: FSMContext) -
     Обработчик, который срабатывает после того, как пользователь подтвердил перевод.
     Отправляет заявку администраторам.
     """
+    lang = "ru"
     state_data = await state.get_data()
     amount = state_data.get('amount')
 
     if amount is None:
         # Используем локализованное сообщение об ошибке
-        await callback.message.edit_text(translator.get_message("top_up_error"))
+        await callback.message.edit_text(translator.get_message(lang, "top_up_error"))
         await state.clear()
         return
 
     # Создаем клавиатуру для администратора с локализованными кнопками
     admin_builder = InlineKeyboardBuilder()
     admin_builder.button(
-        text=translator.get_message("p2p_confirm"),
+        text=translator.get_button(lang, "p2p_confirm"),
         callback_data=f"admin_confirm_top_up:{callback.from_user.id}:{amount}"
     )
     admin_builder.button(
-        text=translator.get_message("p2p_decline"),
+        text=translator.get_button(lang, "p2p_decline"),
         callback_data=f"admin_decline_top_up:{callback.from_user.id}:{amount}"
     )
     admin_builder.adjust(2)
     
     # Формируем текст заявки для администратора, используя локализацию
     admin_text = translator.get_message(
+        lang,
         "admin_new_top_up_request",
         username=callback.from_user.username or 'N/A',
         user_id=callback.from_user.id,
@@ -285,7 +296,7 @@ async def confirm_transfer_handler(callback: CallbackQuery, state: FSMContext) -
     # Отправляем подтверждение пользователю с локализованным текстом
     photo = FSInputFile(PHOTO_PATH)
     await callback.message.edit_media(
-        media=InputMediaPhoto(media=photo, caption=translator.get_message("top_up_request_sent_to_admins")),
+        media=InputMediaPhoto(media=photo, caption=translator.get_message(lang, "top_up_request_sent_to_admins")),
         reply_markup=None
     )
     
@@ -304,6 +315,7 @@ async def admin_confirm_top_up(callback: CallbackQuery) -> None:
     _prefix, user_id_str, amount_str = callback.data.split(':')
     user_id = int(user_id_str)
     amount = float(amount_str)
+    lang = "ru"
 
     # Получаем данные пользователя и обновляем баланс
     user_data = db.get_user_data(user_id)
@@ -314,16 +326,18 @@ async def admin_confirm_top_up(callback: CallbackQuery) -> None:
     # Уведомляем администратора, что заявка подтверждена, используя локализацию
     await callback.message.edit_text(
         translator.get_message(
+            lang,
             "admin_request_confirmed_top_up",
             user_id=user_id,
             amount=amount,
             currency="TON"
         )
     )
-    await callback.answer(translator.get_message("admin_request_confirmed_alert"))
+    await callback.answer(translator.get_message(lang, "admin_request_confirmed_alert"))
 
     # Уведомляем пользователя о пополнении
     user_text = translator.get_message(
+        lang,
         "user_top_up_confirmed",
         amount=amount,
         currency="TON",
@@ -347,20 +361,23 @@ async def admin_decline_top_up(callback: CallbackQuery) -> None:
     _prefix, user_id_str, amount_str = callback.data.split(':')
     user_id = int(user_id_str)
     amount = float(amount_str)
+    lang = "ru"
 
     # Уведомляем администратора об отказе, используя локализацию
     await callback.message.edit_text(
         translator.get_message(
+            lang,
             "admin_request_declined_top_up",
             user_id=user_id,
             amount=amount,
             currency="TON"
         )
     )
-    await callback.answer(translator.get_message("admin_request_declined_alert"))
+    await callback.answer(translator.get_message(lang, "admin_request_declined_alert"))
 
     # Уведомляем пользователя об отказе, используя локализацию
     user_text = translator.get_message(
+        lang,
         "user_top_up_declined",
         amount=amount,
         currency="TON"
@@ -371,7 +388,6 @@ async def admin_decline_top_up(callback: CallbackQuery) -> None:
         photo=photo,
         caption=user_text
     )
-
 
 
 @router.callback_query(F.data == "cancel_top_up")

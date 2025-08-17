@@ -73,15 +73,14 @@ async def p2p_select_currency_handler(callback: CallbackQuery) -> None:
                 lang,
                 'p2p_trader_format',
                 nickname=trader['nickname'],
-                currency_pair=currency_pair.replace('_', ' > '),
+                currency_pair=currency_pair.replace('_', ' <> '),
                 price=trader['price'],
                 limit=trader['limit'],
                 action=trader['action']
             )
             # Экранируем текст для кнопки, чтобы избежать ошибок с разметкой
-            escaped_button_text = html.escape(button_text)
             builder.button(
-                text=escaped_button_text,
+                text=button_text,
                 callback_data=f"p2p_trader_select:{trader['id']}"
             )
         builder.adjust(1) # Располагаем кнопки по одной в ряд
