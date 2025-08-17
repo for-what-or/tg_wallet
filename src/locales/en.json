@@ -60,7 +60,6 @@
     "welcome": "💚 [ВСТАВИТЬ ИМЯ] — Your trusted partner in the world of P2P deals\n\n🔒 Security first\nBuy and sell anything — from Telegram gifts and NFTs to tokens and fiat currencies — quickly, conveniently, and without risk.\n\n💼 Why choose us:\n• Intuitive wallet management\n• Transparent and profitable referral program\n\n📘 Step-by-step instructions\nRead the guide to make deals easily and confidently: [Link]\n\nChoose a section 👇",
     "balance_changed": "✅ Your balance has been changed. It is now: {value} TON",
     "balance_change_syntax_error": "❌ Invalid format. Use /balance <amount> (e.g., /balance +100 or /balance -50).",
-    "help_text": "ℹ️ <b>Available commands:</b>\n\n/start - Launch the bot and return to the main menu\n/help - Show the list of commands and their description\n/balance - Show your current balance or change it (e.g., /balance +100)\n/id - Show your unique ID\n/addvip - Grant permission to top up balance (for admins only)",
     "p2p_deal_canceled": "❌ Deal canceled.",
     "p2p_request_sent_to_admins": "✅ Your withdrawal request has been sent to the administrators.\nWait for confirmation.",
     "admin_new_withdrawal_request": "🔔 New withdrawal request №{deal_id}\n\n👤 Sender: @{username} (ID: {user_id})\n💰 Amount: {amount} {currency}\n💳 Recipient type: {recipient_type}\n📍 Recipient address: {recipient_address}",

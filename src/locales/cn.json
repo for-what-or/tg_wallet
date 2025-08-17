@@ -60,7 +60,6 @@
     "welcome": "💚 [插入名称] — 您在P2P交易世界中值得信赖的伙伴\n\n🔒 安全至上\n购买和出售任何东西 — 从Telegram礼物和NFT到代币和法币 — 快速、方便、无风险。\n\n� 分步说明\n阅读本指南，轻松自信地进行交易：[链接]\n\n选择一个部分 👇",
     "balance_changed": "✅ 您的余额已更改。当前余额为：{value} TON",
     "balance_change_syntax_error": "❌ 无效的格式。请使用 /balance <金额>（例如，/balance +100 或 /balance -50）。",
-    "help_text": "ℹ️ <b>可用命令：</b>\n\n/start - 启动机器人并返回主菜单\n/help - 显示命令列表及其描述\n/balance - 显示您当前的余额或更改它（例如，/balance +100）\n/id - 显示您的唯一ID\n/addvip - 授予充值余额的权限（仅限管理员）",
     "p2p_deal_canceled": "❌ 交易已取消。",
     "p2p_request_sent_to_admins": "✅ 您的提现申请已发送给管理员。\n请等待确认。",
     "admin_new_withdrawal_request": "🔔 新的提现申请编号：{deal_id}\n\n👤 发送人：@{username} (ID: {user_id})\n💰 金额：{amount} {currency}\n💳 收款人类型：{recipient_type}\n📍 收款人地址：{recipient_address}",

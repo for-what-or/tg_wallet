@@ -195,15 +195,3 @@ async def handle_balance_command(message: Message) -> None:
 
     except (ValueError, IndexError):
         await message.answer(translator.get_message(lang, 'balance_change_syntax_error'))
-
-
-# --- Новая команда /help ---
-@router.message(Command("help"))
-async def command_help_handler(message: Message) -> None:
-    """
-    Обработчик для команды /help.
-    Отправляет пользователю список всех доступных команд.
-    """
-    lang = db.get_user_language(message.from_user.id) if db.user_exists(message.from_user.id) else 'ru'
-    help_text = translator.get_message(lang, 'help_text')
-    await message.answer(help_text, parse_mode="HTML")
