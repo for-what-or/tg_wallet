@@ -1,7 +1,6 @@
-import re
-from aiogram import F, Router, html, Bot
+from aiogram import F, Router, html
 from aiogram.filters import Command, CommandStart
-from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, FSInputFile, InputMediaPhoto
+from aiogram.types import Message, CallbackQuery, FSInputFile, InputMediaPhoto
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.fsm.context import FSMContext
 from aiogram import types
@@ -13,9 +12,8 @@ from src.states import *
 from src.config import ADMIN_GROUPS, PHOTO_PATH
 # Импортируем клавиатуры из нового файла
 from src.utils.keyboards import get_main_menu_keyboard, get_register_keyboard
+from src.utils.addons import delete_old_message
 # Импортируем хелперы из нового файла
-
-from src.bot_commands import set_bot_commands # Импортируем новую функцию для установки команд
 
 router = Router()
 
@@ -79,7 +77,10 @@ async def register_handler(callback: CallbackQuery, state: FSMContext) -> None:
 
     text = translator.get_message(lang, 'register')
     
-    await callback.message.edit_text(
+    # Удаляем предыдущее сообщение
+    await delete_old_message(callback.message)
+    
+    await callback.message.answer(
         text=text,
         reply_markup=builder.as_markup()
     )
@@ -99,6 +100,11 @@ async def process_name(message: Message, state: FSMContext) -> None:
 
     db.register_new_user(user_id, user_name, full_name, lang)
     await state.clear()
+    
+    # Удаляем сообщение с именем пользователя и предыдущее сообщение бота
+    await delete_old_message(message)
+    await delete_old_message(message.reply_to_message)
+    
     await command_start_handler(message, state)
 
 @router.callback_query(RegistrationStates.waiting_for_name, F.data == 'use_profile_name')
@@ -110,6 +116,10 @@ async def use_profile_name_handler(callback: CallbackQuery, state: FSMContext) -
 
     db.register_new_user(user_id, user_name, user_full_name, lang)
     await state.clear()
+    
+    # Удаляем сообщение с кнопкой
+    await delete_old_message(callback.message)
+    
     await command_start_handler(callback, state)
 
 # --- Команда /id ---
